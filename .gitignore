@@ -1,0 +1,16 @@
+credentials/
+.venv
+acn-resale-inventories-dde03-firebase-adminsdk-ikyw4-1d40de00d3.json
+enquiry-tracking-1818988a416c.json
+.env
+*.csv
+masalServiceAccountKey.json
+masal-db-6cc78-aa35f0672ae1.json
+invoices
+*.pdf
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+*.xlsb
+credentials
