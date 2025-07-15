@@ -179,26 +179,23 @@ def process_document_batch(docs_batch: List, batch_number: int) -> List[Dict]:
     return processed_docs
 
 def fetch_firestore_data_with_pagination(collection_name: str, page_size: int = BATCH_SIZE) -> List[Dict]:
-    """Fetch Firestore data with pagination and batch processing - filtered for referral source only"""
+    """Fetch Firestore data with pagination and batch processing - all documents"""
     try:
         db = initialize_firebase()
         collection_ref = db.collection(collection_name)
         
-        logger.info(f"🔍 Starting paginated fetch from Firestore collection: {collection_name} (referral source only)...")
+        logger.info(f"🔍 Starting paginated fetch from Firestore collection: {collection_name} (all documents)...")
         
-        # Filter for documents where source equals "referral"
-        query = collection_ref.where("source", "==", "")
-        
-        # Get total count for progress tracking
-        logger.info("📊 Counting total direct documents...")
-        all_docs = list(query.stream())
+        # Get all documents without any filters
+        logger.info("📊 Counting total documents...")
+        all_docs = list(collection_ref.stream())
         total_docs = len(all_docs)
         
         if total_docs == 0:
-            logger.warning("⚠️ No direct documents found in Firestore.")
+            logger.warning("⚠️ No documents found in Firestore.")
             return []
 
-        logger.info(f"📈 Found {total_docs} direct documents. Processing in batches of {page_size}...")
+        logger.info(f"📈 Found {total_docs} documents. Processing in batches of {page_size}...")
 
         # Process documents in batches with parallel processing
         all_processed_data = []
@@ -226,7 +223,7 @@ def fetch_firestore_data_with_pagination(collection_name: str, page_size: int = 
                 except Exception as batch_error:
                     logger.error(f"❌ Error processing batch {batch_number}: {batch_error}")
 
-        logger.info(f"✅ Successfully processed {len(all_processed_data)} referral records from Firestore.")
+        logger.info(f"✅ Successfully processed {len(all_processed_data)} records from Firestore.")
         return all_processed_data
 
     except Exception as e:
@@ -354,20 +351,20 @@ def main():
     start_time = time.time()
     
     try:
-        logger.info("🚀 Starting enhanced Firestore to Google Sheets sync for referral leads...")
+        logger.info("🚀 Starting enhanced Firestore to Google Sheets sync for all leads...")
         
         # Configuration
         collection_name = "acnLeads"
         spreadsheet_id = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
-        sheet_name = "Tried Access"
+        sheet_name = "Leads Form Firebase"
         
         # Initialize connections
         logger.info("🔧 Initializing connections...")
         initialize_firebase()
         initialize_sheets_client()
         
-        # Fetch data with batch processing (filtered for referral source)
-        logger.info("📥 Fetching referral leads data from Firestore...")
+        # Fetch data with batch processing (all documents)
+        logger.info("📥 Fetching all leads data from Firestore...")
         fetch_start = time.time()
         data = fetch_firestore_data_with_pagination(collection_name)
         fetch_end = time.time()
@@ -387,15 +384,15 @@ def main():
             total_time = time.time() - start_time
             records_per_second = len(data) / total_time if total_time > 0 else 0
             
-            logger.info("🎉 Referral leads sync completed successfully!")
+            logger.info("🎉 All leads sync completed successfully!")
             logger.info(f"📊 Performance Summary:")
-            logger.info(f"   • Total referral records: {len(data)}")
+            logger.info(f"   • Total records: {len(data)}")
             logger.info(f"   • Total time: {total_time:.2f} seconds")
             logger.info(f"   • Processing rate: {records_per_second:.1f} records/second")
             logger.info(f"   • Fetch time: {fetch_end - fetch_start:.2f}s")
             logger.info(f"   • Write time: {write_end - write_start:.2f}s")
         else:
-            logger.warning("⚠️ No referral leads data to write to Google Sheets.")
+            logger.warning("⚠️ No leads data to write to Google Sheets.")
             
     except Exception as e:
         logger.error(f"❌ An error occurred: {e}")
