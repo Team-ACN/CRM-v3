@@ -98,13 +98,16 @@ def convert_unix_to_date(unix_timestamp):
     try:
         if not unix_timestamp or not isinstance(unix_timestamp, (int, float, str)):
             return ""
-        # Handle 0 timestamps
-        if int(unix_timestamp) == 0:
-            return ""
+        
+        # Handle 0 or invalid timestamps
+        if int(unix_timestamp) <= 0 or int(unix_timestamp) > 32503680000:  # This is an arbitrary limit (around the year 3000)
+            return "Invalid Timestamp"
+        
         return datetime.fromtimestamp(int(unix_timestamp), tz=timezone.utc).strftime('%d/%b/%Y')
     except Exception as e:
         logger.warning(f"⚠️ Error converting timestamp {unix_timestamp}: {e}")
-        return ""
+        return "Error"
+
 
 def clean_phone_number(number):
     """Clean and normalize phone number"""
