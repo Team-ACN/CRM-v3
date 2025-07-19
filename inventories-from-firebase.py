@@ -31,12 +31,14 @@ GSPREAD_PRIVATE_KEY_ID    = os.getenv("GSPREAD_PRIVATE_KEY_ID")
 GSPREAD_PRIVATE_KEY       = os.getenv("GSPREAD_PRIVATE_KEY", "").replace('\\n', '\n')
 GSPREAD_CLIENT_EMAIL      = os.getenv("GSPREAD_CLIENT_EMAIL")
 GSPREAD_CLIENT_ID         = os.getenv("GSPREAD_CLIENT_ID")
-GOOGLE_SHEET_ID           = "1o6KI4tXt5yfIOHYQ9JH9RI1NK35DKrJRPHNf0srDnuo"
+GOOGLE_SHEET_ID           = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
+# Sheet name can be set via environment variable or modified directly here
 
 # ---------------------------
-# Firestore Collection Name
+# Firestore Collection Name & Sheet Name
 # ---------------------------
-FIRESTORE_COLLECTION_NAME = "ACN123"
+FIRESTORE_COLLECTION_NAME = "acnProperties"
+GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "Inventories from firebase")  # Default to Sheet1 if not specified
 
 # ---------------------------
 # Initialize Firebase Admin SDK
@@ -68,11 +70,59 @@ def convert_unix_to_date(unix_timestamp):
     try:
         if not unix_timestamp:
             return ""
+        
+        # If it's already a string (like "Ready-to-move"), return as-is
+        if isinstance(unix_timestamp, str):
+            # Try to convert to number, if it fails, return the string
+            try:
+                unix_timestamp = float(unix_timestamp)
+            except ValueError:
+                return unix_timestamp  # Return the string as-is
+        
+        # Handle both integer and float timestamps
+        timestamp_num = float(unix_timestamp)
+        
+        # Check if it's milliseconds (13+ digits) and convert to seconds
+        if timestamp_num > 9999999999:  # More than 10 digits = milliseconds
+            timestamp_num = timestamp_num / 1000
+        
+        timestamp_int = int(timestamp_num)
+        
         # Return in ISO format to ensure Sheets parses as date
-        return datetime.fromtimestamp(int(unix_timestamp), tz=timezone.utc).strftime('%Y-%m-%d')
+        return datetime.fromtimestamp(timestamp_int, tz=timezone.utc).strftime('%Y-%m-%d')
     except Exception as e:
         print(f"⚠️ Error converting timestamp {unix_timestamp}: {e}")
-        return ""
+        return str(unix_timestamp) if unix_timestamp else ""
+
+# ---------------------------
+# Convert Unix timestamp to ISO datetime
+# ---------------------------
+def convert_unix_to_datetime(unix_timestamp):
+    try:
+        if not unix_timestamp:
+            return ""
+        
+        # If it's already a string, try to convert to number, if it fails, return the string
+        if isinstance(unix_timestamp, str):
+            try:
+                unix_timestamp = float(unix_timestamp)
+            except ValueError:
+                return unix_timestamp  # Return the string as-is
+        
+        # Handle both integer and float timestamps
+        timestamp_num = float(unix_timestamp)
+        
+        # Check if it's milliseconds (13+ digits) and convert to seconds
+        if timestamp_num > 9999999999:  # More than 10 digits = milliseconds
+            timestamp_num = timestamp_num / 1000
+        
+        timestamp_int = int(timestamp_num)
+        
+        # Return in ISO format with time
+        return datetime.fromtimestamp(timestamp_int, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    except Exception as e:
+        print(f"⚠️ Error converting timestamp {unix_timestamp}: {e}")
+        return str(unix_timestamp) if unix_timestamp else ""
 
 # ---------------------------
 # Fetch data from Firestore
@@ -91,8 +141,9 @@ def fetch_firestore_data(collection_name):
             item = doc.to_dict() or {}
             row = [
                 item.get("propertyId", ""),
-                item.get("cpCode", ""),
-                item.get("nameOfTheProperty", ""),
+                item.get("cpId", ""),  # Updated from cpCode
+                item.get("propertyName", ""),  # Updated from nameOfTheProperty
+                item.get("qcId", ""),  # New field
                 item.get("assetType", ""),
                 item.get("subType", ""),
                 item.get("plotSize", ""),
@@ -103,13 +154,15 @@ def fetch_firestore_data(collection_name):
                 item.get("askPricePerSqft", ""),
                 item.get("unitType", ""),
                 item.get("micromarket", ""),
+                item.get("communityType", ""),  # New field
                 item.get("extraDetails", ""),
                 item.get("floorNo", ""),
-                item.get("handoverDate", ""),
+                convert_unix_to_date(item.get("handoverDate")),  # Now treating as timestamp
                 item.get("area", ""),
                 item.get("mapLocation", ""),
                 convert_unix_to_date(item.get("dateOfInventoryAdded")),
                 convert_unix_to_date(item.get("dateOfStatusLastChecked")),
+                convert_unix_to_datetime(item.get("lastCheck")),  # New timestamp field
                 item.get("driveLink", ""),
                 item.get("buildingKhata", ""),
                 item.get("landKhata", ""),
@@ -118,17 +171,20 @@ def fetch_firestore_data(collection_name):
                 item.get("ageOfStatus", ""),
                 item.get("status", ""),
                 item.get("tenanted", ""),
-                item.get("ocReceived", ""),
+                item.get("ocReceived", ""),  # Now boolean in schema
+                item.get("bdaApproved", ""),  # New field
+                item.get("biappaApproved", ""),  # New field
                 item.get("currentStatus", ""),
                 (f"{item.get('_geoloc', {}).get('lat','')}, {item.get('_geoloc', {}).get('lng','')}" if isinstance(item.get('_geoloc'), dict) else ""),
-                item.get("exclusive", ""),
-                item.get("exactFloor", ""),
-                item.get("eKhata", ""),
+                item.get("exclusive", ""),  # Keeping from original script
+                item.get("exactFloor", ""),  # Keeping from original script
+                item.get("eKhata", ""),  # Keeping from original script
                 ", ".join(item.get("photo", [])) if isinstance(item.get("photo"), list) else item.get("photo", ""),
                 ", ".join(item.get("video", [])) if isinstance(item.get("video"), list) else item.get("video", ""),
                 ", ".join(item.get("document", [])) if isinstance(item.get("document"), list) else item.get("document", ""),
-                item.get("builder_name", ""),
-                
+                item.get("builder_name", ""),  # Keeping from original script
+                item.get("soldPrice", ""),  # New field
+                item.get("soldDate", ""),  # New field
             ]
             rows.append(row)
         print(f"✅ Successfully fetched {len(rows)} records from Firestore.")
@@ -160,17 +216,26 @@ def write_to_google_sheet(data):
         scopes = ['https://www.googleapis.com/auth/spreadsheets']
         creds = Credentials.from_service_account_info(creds_data, scopes=scopes)
         gc = gspread.authorize(creds)
-        sheet = gc.open_by_key(GOOGLE_SHEET_ID).sheet1
-        # Headers
+        spreadsheet = gc.open_by_key(GOOGLE_SHEET_ID)
+        
+        # Try to get the specified sheet, create if it doesn't exist
+        try:
+            sheet = spreadsheet.worksheet(GOOGLE_SHEET_NAME)
+            print(f"📊 Using existing sheet: {GOOGLE_SHEET_NAME}")
+        except gspread.WorksheetNotFound:
+            sheet = spreadsheet.add_worksheet(title=GOOGLE_SHEET_NAME, rows="1000", cols="50")
+            print(f"📊 Created new sheet: {GOOGLE_SHEET_NAME}")
+        
+        # Updated Headers to match new schema
         headers = [
-            "Property ID","CP Code","Name of The property","Asset Type","Sub Type",
+            "Property ID","CP ID","Property Name","QC ID","Asset Type","Sub Type",
             "Plot Size","Carpet (Sq Ft)","SBUA (Sq ft)","Facing","Total Ask Price (Lacs)",
-            "Ask Price / Sqft","Unit Type","Micromarket","Extra Details","Floor No.",
+            "Ask Price / Sqft","Unit Type","Micromarket","Community Type","Extra Details","Floor No.",
             "Handover Date","Area","Map Location","Date of inventory added","Date of status last checked",
-            "Drive link for more info","Building Khata","Land Khata","Building Age",
+            "Last Check","Drive link for more info","Building Khata","Land Khata","Building Age",
             "Age of Inventory","Age of Status","Status","Tenanted or Not",
-            "OC Received or not","Current Status","Coordinates","Exclusive","Exact Floor",
-            "eKhata","Photo","Video","Document","Builder Name"
+            "OC Received or not","BDA Approved","BIAPPA Approved","Current Status","Coordinates",
+            "Exclusive","Exact Floor","eKhata","Photo","Video","Document","Builder Name"
         ]
         payload = [headers] + data
         # Sanitize
@@ -181,12 +246,13 @@ def write_to_google_sheet(data):
         # Clear then update with USER_ENTERED
         sheet.clear()
         sheet.update("A1", sanitized, value_input_option='USER_ENTERED')
-        print("✅ Data written successfully (dates parsed as dates).")
+        print(f"✅ Data written successfully to sheet '{GOOGLE_SHEET_NAME}' (dates parsed as dates).")
     except Exception as e:
         print(f"❌ Error writing to Google Sheets: {e}")
 
 # Main
 def main():
+    print(f"🚀 Starting sync from Firestore collection '{FIRESTORE_COLLECTION_NAME}' to Google Sheet '{GOOGLE_SHEET_NAME}'")
     initialize_firebase()
     data = fetch_firestore_data(FIRESTORE_COLLECTION_NAME)
     if data:

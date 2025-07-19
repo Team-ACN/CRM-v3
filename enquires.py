@@ -447,48 +447,52 @@ def write_to_google_sheet_batch(data: List[Dict], spreadsheet_id: str, sheet_nam
         
         logger.info(f"📊 Writing {total_rows} rows to Google Sheets...")
         
-        # Clear existing data
+        # Clear only the fixed columns data (preserve additional columns)
         start_time = time.time()
+        fixed_columns_range = f"{sheet_name}!A1:{chr(65 + len(fixed_columns) - 1)}"
         service.spreadsheets().values().clear(
-            spreadsheetId=spreadsheet_id, range=sheet_name
+            spreadsheetId=spreadsheet_id, range=fixed_columns_range
         ).execute()
+        logger.info(f"🧹 Cleared only fixed columns range: {fixed_columns_range}")
         
         # Batch write data with USER_ENTERED to prevent apostrophes
         if total_rows <= SHEETS_BATCH_SIZE:
-            # Single batch write for normal datasets
+            # Single batch write for normal datasets - write only fixed columns
+            fixed_columns_data = [final_columns[:len(fixed_columns)]] + [row[:len(fixed_columns)] for row in formatted_data]
             service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
-                range=sheet_name,
+                range=f"{sheet_name}!A1",
                 valueInputOption="USER_ENTERED",  # Prevents apostrophes on numbers
-                body={"values": sheet_data}
+                body={"values": fixed_columns_data}
             ).execute()
             end_time = time.time()
             
             logger.info(f"✅ Enquiry data written successfully in {end_time - start_time:.2f} seconds.")
-            logger.info(f"📈 Performance: {len(final_columns)} columns, {len(formatted_data)} rows")
+            logger.info(f"📈 Performance: {len(fixed_columns)} fixed columns, {len(formatted_data)} rows")
             logger.info("✅ Used USER_ENTERED mode to preserve numeric formatting (no apostrophes).")
+            logger.info(f"📝 Only wrote fixed columns (A-{chr(65 + len(fixed_columns) - 1)}) to preserve additional columns")
         else:
             # Split into multiple batches for very large datasets
             logger.info(f"📊 Large dataset detected. Splitting into batches of {SHEETS_BATCH_SIZE} rows...")
             
-            # Write headers first
+            # Write headers first (only fixed columns)
             service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
                 range=f"{sheet_name}!A1",
                 valueInputOption="USER_ENTERED",
-                body={"values": [final_columns]}
+                body={"values": [final_columns[:len(fixed_columns)]]}
             ).execute()
             
-            # Write data in batches
+            # Write data in batches (only fixed columns)
             for i in range(0, len(formatted_data), SHEETS_BATCH_SIZE):
-                batch_data = formatted_data[i:i + SHEETS_BATCH_SIZE]
+                batch_data = [row[:len(fixed_columns)] for row in formatted_data[i:i + SHEETS_BATCH_SIZE]]
                 start_row = i + 2  # +2 because headers are in row 1, and sheets are 1-indexed
                 
-                # Calculate the actual range for this batch
+                # Calculate the actual range for this batch (only fixed columns)
                 end_row = start_row + len(batch_data) - 1
-                batch_range = f"{sheet_name}!A{start_row}:{chr(65 + len(final_columns) - 1)}{end_row}"
+                batch_range = f"{sheet_name}!A{start_row}:{chr(65 + len(fixed_columns) - 1)}{end_row}"
                 
-                logger.info(f"🔄 Writing batch {i//SHEETS_BATCH_SIZE + 1}: rows {start_row}-{end_row} ({len(batch_data)} rows)")
+                logger.info(f"🔄 Writing batch {i//SHEETS_BATCH_SIZE + 1}: rows {start_row}-{end_row} ({len(batch_data)} rows, columns A-{chr(65 + len(fixed_columns) - 1)})")
                 
                 batch_start_time = time.time()
                 service.spreadsheets().values().update(
