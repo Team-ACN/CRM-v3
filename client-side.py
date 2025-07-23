@@ -117,6 +117,7 @@ dict_scripts = {
     "Agents": {"file": "agents.py", "desc": "Sync agents data from Firebase"},
     "Enquiries": {"file": "enquires.py", "desc": "Sync enquiries from Firebase"},
     "Tried Access": {"file": "leads.py", "desc": "Sync tried access data from Firebase"},
+    "Inventories": {"file": "inventories-from-firebase.py", "desc": "Sync inventories from Firebase"},
     # "Database": {"file": "Dateupdate.py", "desc": "Update Last Checked Date in Firebase"},
     # "Requirements": {"file": "requirements-from-firebase.py", "desc": "Sync requirements from Firebase"}
 }
