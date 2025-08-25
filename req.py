@@ -102,10 +102,29 @@ def fetch_requirements_data(collection_name):
             return []
 
         print(f"📄 Found {len(docs)} documents.")
-        rows = []
+        
+        # Create a list to store documents with their data for sorting
+        doc_data = []
         for doc in docs:
             try:
                 item = doc.to_dict()
+                # Store the document data along with the 'added' timestamp for sorting
+                doc_data.append({
+                    'data': item,
+                    'added_timestamp': item.get("added", 0)  # Default to 0 if no 'added' field
+                })
+            except Exception as doc_err:
+                print(f"⚠️ Error processing document {doc.id}: {doc_err}")
+        
+        # Sort by 'added' field in descending order (newest first)
+        doc_data.sort(key=lambda x: x['added_timestamp'], reverse=True)
+        print(f"✅ Documents sorted by 'added' field (newest first).")
+        
+        # Process the sorted documents
+        rows = []
+        for doc_item in doc_data:
+            try:
+                item = doc_item['data']
                 budget = item.get("budget", {}) or {}
                 
                 row = [
@@ -138,8 +157,9 @@ def fetch_requirements_data(collection_name):
                 ]
                 rows.append(row)
             except Exception as doc_err:
-                print(f"⚠️ Error processing document {doc.id}: {doc_err}")
-        print(f"✅ Successfully fetched {len(rows)} records.")
+                print(f"⚠️ Error processing sorted document: {doc_err}")
+        
+        print(f"✅ Successfully fetched and sorted {len(rows)} records.")
         return rows
     except Exception as e:
         print(f"❌ Error fetching data from Firestore: {e}")
