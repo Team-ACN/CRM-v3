@@ -3,6 +3,10 @@ import subprocess
 import os
 import time
 import sys
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Get the Python interpreter path
 PYTHON_EXECUTABLE = sys.executable
@@ -47,7 +51,7 @@ def run_script(script_name):
             missing_vars.append(var)
     
     if missing_vars:
-        return f"❌ Missing required environment variables: {', '.join(missing_vars)}\n\nPlease ensure all required environment variables are set in your .env file"
+        return f"❌ Missing required environment variables: {', '.join(missing_vars)}\n\nPlease ensure all required environment variables are set in your .env file\n\nCurrent working directory: {os.getcwd()}\n.env file exists: {os.path.exists('.env')}"
     
     start = time.time()
     try:
@@ -111,6 +115,43 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
+# # Add environment status check
+# st.markdown("""
+# <div class="glass-card" style="margin-bottom:20px;">
+#     <h3>🔧 Environment Status</h3>
+# """, unsafe_allow_html=True)
+
+# # Check environment variables and display status
+# required_env_vars = [
+#     "FIREBASE_PROJECT_ID", "FIREBASE_PRIVATE_KEY_ID", "FIREBASE_PRIVATE_KEY",
+#     "FIREBASE_CLIENT_EMAIL", "FIREBASE_CLIENT_ID",
+#     "GSPREAD_PROJECT_ID", "GSPREAD_PRIVATE_KEY_ID", "GSPREAD_PRIVATE_KEY",
+#     "GSPREAD_CLIENT_EMAIL", "GSPREAD_CLIENT_ID"
+# ]
+
+# env_status = []
+# for var in required_env_vars:
+#     status = "✅" if os.getenv(var) else "❌"
+#     masked_value = "***SET***" if os.getenv(var) else "NOT SET"
+#     env_status.append(f"{status} {var}: {masked_value}")
+
+# st.markdown(f"<p><strong>Working Directory:</strong> <code>{os.getcwd()}</code></p>", unsafe_allow_html=True)
+# st.markdown(f"<p><strong>.env file exists:</strong> {'✅' if os.path.exists('.env') else '❌'}</p>", unsafe_allow_html=True)
+
+# # Create columns for environment variables display
+# col1, col2 = st.columns(2)
+# mid_point = len(env_status) // 2
+
+# with col1:
+#     for status in env_status[:mid_point]:
+#         st.markdown(f"<p><code>{status}</code></p>", unsafe_allow_html=True)
+
+# with col2:
+#     for status in env_status[mid_point:]:
+#         st.markdown(f"<p><code>{status}</code></p>", unsafe_allow_html=True)
+
+# st.markdown("</div>", unsafe_allow_html=True)
+
 # Scripts list
 dict_scripts = {
     "Leads": {"file": "all-leads.py", "desc": "Sync leads data from Firebase (direct source only)"},
@@ -118,34 +159,11 @@ dict_scripts = {
     "Enquiries": {"file": "enquires.py", "desc": "Sync enquiries from Firebase"},
     "Tried Access": {"file": "leads.py", "desc": "Sync tried access data from Firebase"},
     "Inventories": {"file": "inventories-from-firebase.py", "desc": "Sync inventories from Firebase"},
-    # "Database": {"file": "Dateupdate.py", "desc": "Update Last Checked Date in Firebase"},
-    # "Requirements": {"file": "requirements-from-firebase.py", "desc": "Sync requirements from Firebase"}
+    "Requirements": {"file": "req.py", "desc": "Sync requirements from Firebase"}
 }
 
 # Display operations
 st.markdown("<h2 style='text-align:center; margin-bottom:30px;'>Available Operations</h2>", unsafe_allow_html=True)
-
-# Add debugging info
-# st.markdown("""
-# <div class="glass-card" style="margin-bottom:20px;">
-#     <h3>🔧 Debug Information</h3>
-#     <p><strong>Python Executable:</strong> <code>{}</code></p>
-#     <p><strong>Working Directory:</strong> <code>{}</code></p>
-#     <p><strong>Available Scripts:</strong></p>
-#     <ul>
-# """.format(PYTHON_EXECUTABLE, os.getcwd()), unsafe_allow_html=True)
-
-# for key, info in dict_scripts.items():
-#     script_path = os.path.join(os.getcwd(), info['file'])
-#     # exists = "✅" if os.path.exists(script_path) else "❌"
-#     st.markdown(f"<li>{exists} <code>{info['file']}</code> - {info['desc']}</li>", unsafe_allow_html=True)
-
-st.markdown("</ul></div>", unsafe_allow_html=True)
-
-# Test button for debugging
-# if st.button("🧪 Test Script Execution", key="test_btn", use_container_width=True):
-#     test_output = run_script("leads.py")
-#     st.session_state.output = f"🧪 TEST RESULTS:\n\n{test_output}"
 
 for key, info in dict_scripts.items():
     if st.button(f"Execute {key}", key=f"btn_{key}", use_container_width=True):
@@ -154,4 +172,4 @@ for key, info in dict_scripts.items():
 # Output display
 if 'output' in st.session_state:
     st.markdown("<h2 style='text-align:center;'>Operation Output</h2>", unsafe_allow_html=True)
-    st.text_area("", st.session_state.output, height=300, key="output_area")
+    st.text_area("Script Output", st.session_state.output, height=300, key="output_area", label_visibility="collapsed")
