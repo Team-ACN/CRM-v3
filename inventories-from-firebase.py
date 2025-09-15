@@ -37,7 +37,7 @@ GOOGLE_SHEET_ID           = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
 # ---------------------------
 # Firestore Collection Name & Sheet Name
 # ---------------------------
-FIRESTORE_COLLECTION_NAME = "acnProperties"
+FIRESTORE_COLLECTION_NAME = "acnTestProperties"
 GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "Inventories from firebase")  # Default to Sheet1 if not specified
 
 # ---------------------------
@@ -235,8 +235,8 @@ def fetch_firestore_data(collection_name):
                 convert_unix_to_date(item.get("handoverDate")),  # Now treating as timestamp
                 item.get("area", ""),
                 item.get("mapLocation", ""),
-                convert_unix_to_date(item.get("dateOfInventoryAdded")),
-                convert_unix_to_date(item.get("dateOfStatusLastChecked")),
+                convert_unix_to_date(item.get("added")),
+                convert_unix_to_date(item.get("dateOfLastChecked")),
                 convert_unix_to_datetime(item.get("lastCheck")),  # New timestamp field
                 item.get("driveLink", ""),
                 item.get("buildingKhata", ""),

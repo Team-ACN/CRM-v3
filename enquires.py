@@ -102,7 +102,7 @@ def get_sheets_service():
         raise
 
 def convert_unix_to_date(unix_timestamp):
-    """Convert Unix timestamps to human-readable dates"""
+    """Convert Unix timestamps (seconds or milliseconds) to human-readable dates"""
     try:
         if unix_timestamp is None:
             return ""
@@ -121,10 +121,17 @@ def convert_unix_to_date(unix_timestamp):
         if not isinstance(unix_timestamp, (int, float, str)):
             return ""
         
-        # Handle 0 timestamps
-        ts = int(unix_timestamp)
+        # Convert to float for better handling
+        ts = float(unix_timestamp)
         if ts == 0:
             return ""
+        
+        # Detect if timestamp is in milliseconds or seconds
+        # If timestamp is greater than year 2100 in seconds (4102444800), 
+        # it's likely in milliseconds
+        if ts > 4102444800:  # January 1, 2100 in seconds
+            # Convert milliseconds to seconds
+            ts = ts / 1000
         
         return datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%d/%b/%Y')
     except Exception as e:
