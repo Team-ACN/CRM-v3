@@ -138,14 +138,6 @@ def convert_unix_to_date(unix_timestamp):
         logger.warning(f"⚠️ Error converting timestamp {unix_timestamp}: {e}")
         return ""
 
-def clean_phone_number(number):
-    """Clean and normalize phone number"""
-    if not number:
-        return ""
-    normalized_number = str(number).replace(" ", "").strip()
-    if normalized_number.startswith("+91"):
-        normalized_number = normalized_number.replace("+91", "").strip()
-    return normalized_number
 
 def flatten_value(value):
     """Flatten values for proper Google Sheets handling while preserving data types"""
@@ -207,44 +199,71 @@ def process_document_batch(docs_batch: List, batch_number: int) -> List[Dict]:
                 logger.warning(f"⚠️ Unexpected data format in document {doc.id}: {item}")
                 continue
 
-            # Add document ID
-            item["id"] = doc.id
-            
-            # Clean phone numbers with error handling
+            # Clean phone numbers with error handling (keep original format for schema)
             try:
-                item["buyerNumber"] = clean_phone_number(item.get("buyerNumber", ""))
-                item["sellerNumber"] = clean_phone_number(item.get("sellerNumber", ""))
+                if "buyerNumber" in item and item["buyerNumber"]:
+                    # Keep original format but ensure it's a string
+                    item["buyerNumber"] = str(item["buyerNumber"])
+                if "sellerNumber" in item and item["sellerNumber"]:
+                    # Keep original format but ensure it's a string  
+                    item["sellerNumber"] = str(item["sellerNumber"])
             except Exception as e:
-                logger.warning(f"⚠️ Error cleaning phone numbers for {doc.id}: {e}")
+                logger.warning(f"⚠️ Error processing phone numbers for {doc.id}: {e}")
                 item["buyerNumber"] = str(item.get("buyerNumber", ""))
                 item["sellerNumber"] = str(item.get("sellerNumber", ""))
             
-            # Convert timestamp fields with error handling
+            # Store original timestamps for sorting
+            original_added = item.get("added", 0)
+            original_lastModified = item.get("lastModified", 0)
+            
+            # Convert timestamp fields to readable format (overwrite original fields)
             try:
-                item["added_formatted"] = convert_unix_to_date(item.get("added"))
-                item["lastModified_formatted"] = convert_unix_to_date(item.get("lastModified"))
+                item["added"] = convert_unix_to_date(original_added)
+                item["lastModified"] = convert_unix_to_date(original_lastModified)
             except Exception as e:
                 logger.warning(f"⚠️ Error converting timestamps for {doc.id}: {e}")
-                item["added_formatted"] = ""
-                item["lastModified_formatted"] = ""
+                item["added"] = ""
+                item["lastModified"] = ""
+            
+            # Store original timestamp for sorting
+            item["_sort_timestamp"] = original_added
             
             # Process reviews array with error handling
             try:
                 if "reviews" in item:
-                    item["reviews_flat"] = flatten_value(item.get("reviews"))
+                    item["reviews"] = flatten_value(item.get("reviews"))
             except Exception as e:
                 logger.warning(f"⚠️ Error processing reviews for {doc.id}: {e}")
-                item["reviews_flat"] = str(item.get("reviews", ""))
+                item["reviews"] = str(item.get("reviews", ""))
             
-            # Process all fields to ensure they're properly formatted while preserving data types
+            # Process only the schema fields efficiently
+            schema_fields = [
+                "added", "buyerCpId", "buyerName", "buyerNumber", "enquiryId",
+                "isContactShared", "isNew", "lastModified", "propertyId", 
+                "propertyName", "reviews", "sellerCpId", "sellerName", 
+                "sellerNumber", "status"
+            ]
+            
             processed = {}
-            for k, v in item.items():
+            for field in schema_fields:
                 try:
-                    processed[k] = flatten_value(v)
+                    value = item.get(field)
+                    if value is None:
+                        processed[field] = ""
+                    elif field in ["isContactShared", "isNew"] and isinstance(value, bool):
+                        processed[field] = value  # Keep boolean type
+                    elif field in ["added", "lastModified"]:
+                        processed[field] = str(value) if value else ""  # Readable dates as strings
+                    elif field == "reviews":
+                        processed[field] = value  # Already processed above
+                    else:
+                        processed[field] = str(value)
                 except Exception as e:
-                    logger.warning(f"⚠️ Error flattening field '{k}' for {doc.id}: {e}")
-                    # Fallback to string conversion
-                    processed[k] = str(v) if v is not None else ""
+                    logger.warning(f"⚠️ Error processing field '{field}' for {doc.id}: {e}")
+                    processed[field] = ""
+            
+            # Keep the sort timestamp for sorting
+            processed["_sort_timestamp"] = item.get("_sort_timestamp", 0)
             
             processed_docs.append(processed)
 
@@ -300,9 +319,13 @@ def fetch_firestore_data_with_pagination(collection_name: str, page_size: int = 
                 except Exception as batch_error:
                     logger.error(f"❌ Error processing batch {batch_number}: {batch_error}")
 
-        # Sort data in descending order based on 'added' timestamp
+        # Sort data in descending order based on original 'added' timestamp (newest first)
         logger.info("🔄 Sorting enquiries by 'added' date (newest first)...")
-        all_processed_data.sort(key=lambda x: x.get("added", 0), reverse=True)
+        all_processed_data.sort(key=lambda x: x.get("_sort_timestamp", 0), reverse=True)
+        
+        # Remove the temporary sorting field
+        for item in all_processed_data:
+            item.pop("_sort_timestamp", None)
 
         logger.info(f"✅ Successfully processed and sorted {len(all_processed_data)} enquiry records.")
         return all_processed_data
@@ -322,43 +345,30 @@ def write_to_google_sheet_batch(data: List[Dict], spreadsheet_id: str, sheet_nam
         
         logger.info(f"✅ Google Sheet service ready for sheet: {sheet_name}")
         
-        # Define column order optimized for enquiry data
+        # Define column order based on exact schema provided (readable dates only)
         fixed_columns = [
-            # Document Info
-            "id", "enquiryId", "status",
-            
-            # Timestamps (formatted)
-            "added_formatted", "lastModified_formatted",
-            
-            # Buyer Information
-            "buyerCpId", "buyerName", "buyerNumber",
-            
-            # Seller Information  
-            "sellerCpId", "sellerName", "sellerNumber",
-            
-            # Property Information
-            "propertyId", "propertyName",
-            
-            # KAM Information
-            "kamId", "kamName",
-            
-            # Reviews & Feedback
-            "reviews_flat",
-            
-            # Raw Timestamps (for calculations)
-            "added", "lastModified"
+            # Core fields from schema (dates will be in readable format)
+            "added",  # Will contain readable date format
+            "buyerCpId", 
+            "buyerName", 
+            "buyerNumber",
+            "enquiryId",
+            "isContactShared",
+            "isNew",
+            "lastModified",  # Will contain readable date format
+            "propertyId", 
+            "propertyName",
+            "reviews",
+            "sellerCpId", 
+            "sellerName", 
+            "sellerNumber",
+            "status"
         ]
         
-        # Get all unique fields from the data to ensure we don't miss any
-        all_fields = set()
-        for item in data:
-            all_fields.update(item.keys())
+        # Use only the fixed columns from schema - no additional fields
+        final_columns = fixed_columns
         
-        # Add any missing fields to the end of fixed_columns
-        additional_fields = sorted(all_fields - set(fixed_columns))
-        final_columns = fixed_columns + additional_fields
-        
-        logger.info(f"📊 Using {len(final_columns)} columns: {len(fixed_columns)} fixed + {len(additional_fields)} additional")
+        logger.info(f"📊 Using {len(final_columns)} columns from schema")
         
         # Calculate required sheet dimensions
         total_rows_needed = len(data) + 1  # +1 for header
@@ -417,12 +427,12 @@ def write_to_google_sheet_batch(data: List[Dict], spreadsheet_id: str, sheet_nam
             logger.error(f"⚠️ Error resizing sheet: {resize_error}")
             logger.info("Continuing with existing sheet size...")
         
-        # Define data type fields for optimization
-        numeric_fields = {
-            "added", "lastModified"
-        }
+        # Define data type fields for optimization based on schema
+        numeric_fields = set()  # No numeric fields in sheet output (dates are now readable strings)
         
-        boolean_fields = set()  # Add any boolean fields if they exist
+        boolean_fields = {
+            "isContactShared", "isNew"
+        }
         
         logger.info(f"🔄 Formatting {len(data)} enquiry rows for batch write...")
         
@@ -454,52 +464,50 @@ def write_to_google_sheet_batch(data: List[Dict], spreadsheet_id: str, sheet_nam
         
         logger.info(f"📊 Writing {total_rows} rows to Google Sheets...")
         
-        # Clear only the fixed columns data (preserve additional columns)
+        # Clear only columns A to O (15 columns) - preserve any data beyond column O
         start_time = time.time()
-        fixed_columns_range = f"{sheet_name}!A1:{chr(65 + len(fixed_columns) - 1)}"
+        sheet_range = f"{sheet_name}!A1:O"  # Explicitly clear only A to O columns
         service.spreadsheets().values().clear(
-            spreadsheetId=spreadsheet_id, range=fixed_columns_range
+            spreadsheetId=spreadsheet_id, range=sheet_range
         ).execute()
-        logger.info(f"🧹 Cleared only fixed columns range: {fixed_columns_range}")
+        logger.info(f"🧹 Cleared only columns A to O: {sheet_range}")
         
         # Batch write data with USER_ENTERED to prevent apostrophes
         if total_rows <= SHEETS_BATCH_SIZE:
-            # Single batch write for normal datasets - write only fixed columns
-            fixed_columns_data = [final_columns[:len(fixed_columns)]] + [row[:len(fixed_columns)] for row in formatted_data]
+            # Single batch write for normal datasets
             service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
                 range=f"{sheet_name}!A1",
                 valueInputOption="USER_ENTERED",  # Prevents apostrophes on numbers
-                body={"values": fixed_columns_data}
+                body={"values": sheet_data}
             ).execute()
             end_time = time.time()
             
             logger.info(f"✅ Enquiry data written successfully in {end_time - start_time:.2f} seconds.")
-            logger.info(f"📈 Performance: {len(fixed_columns)} fixed columns, {len(formatted_data)} rows")
+            logger.info(f"📈 Performance: {len(final_columns)} schema columns, {len(formatted_data)} rows")
             logger.info("✅ Used USER_ENTERED mode to preserve numeric formatting (no apostrophes).")
-            logger.info(f"📝 Only wrote fixed columns (A-{chr(65 + len(fixed_columns) - 1)}) to preserve additional columns")
         else:
             # Split into multiple batches for very large datasets
             logger.info(f"📊 Large dataset detected. Splitting into batches of {SHEETS_BATCH_SIZE} rows...")
             
-            # Write headers first (only fixed columns)
+            # Write headers first
             service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
                 range=f"{sheet_name}!A1",
                 valueInputOption="USER_ENTERED",
-                body={"values": [final_columns[:len(fixed_columns)]]}
+                body={"values": [final_columns]}
             ).execute()
             
-            # Write data in batches (only fixed columns)
+            # Write data in batches
             for i in range(0, len(formatted_data), SHEETS_BATCH_SIZE):
-                batch_data = [row[:len(fixed_columns)] for row in formatted_data[i:i + SHEETS_BATCH_SIZE]]
+                batch_data = formatted_data[i:i + SHEETS_BATCH_SIZE]
                 start_row = i + 2  # +2 because headers are in row 1, and sheets are 1-indexed
                 
-                # Calculate the actual range for this batch (only fixed columns)
+                # Calculate the actual range for this batch
                 end_row = start_row + len(batch_data) - 1
-                batch_range = f"{sheet_name}!A{start_row}:{chr(65 + len(fixed_columns) - 1)}{end_row}"
+                batch_range = f"{sheet_name}!A{start_row}:{chr(65 + len(final_columns) - 1)}{end_row}"
                 
-                logger.info(f"🔄 Writing batch {i//SHEETS_BATCH_SIZE + 1}: rows {start_row}-{end_row} ({len(batch_data)} rows, columns A-{chr(65 + len(fixed_columns) - 1)})")
+                logger.info(f"🔄 Writing batch {i//SHEETS_BATCH_SIZE + 1}: rows {start_row}-{end_row} ({len(batch_data)} rows, columns A-{chr(65 + len(final_columns) - 1)})")
                 
                 batch_start_time = time.time()
                 service.spreadsheets().values().update(
