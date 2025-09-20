@@ -160,7 +160,8 @@ dict_scripts = {
     "Tried Access": {"file": "leads.py", "desc": "Sync tried access data from Firebase"},
     "Inventories": {"file": "inventories-from-firebase.py", "desc": "Sync inventories from Firebase"},
     "Requirements": {"file": "req.py", "desc": "Sync requirements from Firebase"},
-    "ConnectHistory": {"file": "connecthistory.py", "desc": "Sync connect history from Firebase"}
+    "ConnectHistory": {"file": "connecthistory.py", "desc": "Sync connect history from Firebase"},
+    "QC Properties": {"file": "QC.py", "desc": "Sync QC properties from Firebase"}
 }
 
 # Display operations
