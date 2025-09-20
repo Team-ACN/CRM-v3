@@ -4,6 +4,11 @@ import os
 import time
 import sys
 from dotenv import load_dotenv
+import logging
+
+# Configure logging for Render
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -11,8 +16,13 @@ load_dotenv()
 # Get the Python interpreter path
 PYTHON_EXECUTABLE = sys.executable
 
-# Streamlit page configuration
-st.set_page_config(page_title="ACN Script Runner", layout="wide", initial_sidebar_state="collapsed", page_icon="🎯")
+# Streamlit page configuration optimized for Render
+st.set_page_config(
+    page_title="ACN Script Runner", 
+    layout="wide", 
+    initial_sidebar_state="collapsed", 
+    page_icon="🎯"
+)
 
 # Professional enterprise theme
 st.markdown("""
@@ -160,28 +170,6 @@ st.markdown("""
         border: 1px solid rgba(6, 182, 212, 0.2);
     }
     
-    .status-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-    }
-    
-    .status-success {
-        background: rgba(16, 185, 129, 0.1);
-        border: 1px solid rgba(16, 185, 129, 0.2);
-        color: #10b981;
-    }
-    
-    .status-error {
-        background: rgba(239, 68, 68, 0.1);
-        border: 1px solid rgba(239, 68, 68, 0.2);
-        color: #ef4444;
-    }
-    
     .env-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -254,7 +242,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Function to run external scripts
+# Function to run external scripts with better error handling
 def run_script(script_name):
     path = os.path.join(os.getcwd(), script_name)
     if not os.path.exists(path):
@@ -274,7 +262,7 @@ def run_script(script_name):
             missing_vars.append(var)
     
     if missing_vars:
-        return f"❌ Missing required environment variables: {', '.join(missing_vars)}\n\nPlease ensure all required environment variables are set in your .env file\n\nCurrent working directory: {os.getcwd()}\n.env file exists: {os.path.exists('.env')}"
+        return f"❌ Missing required environment variables: {', '.join(missing_vars)}\n\nPlease ensure all required environment variables are set in your Render dashboard\n\nCurrent working directory: {os.getcwd()}"
     
     start = time.time()
     try:
@@ -287,14 +275,14 @@ def run_script(script_name):
                 "PYTHONUNBUFFERED": "1"
             })
             
-            # Run the script with improved error handling
+            # Run the script with improved error handling and shorter timeout for Render
             proc = subprocess.run(
                 [PYTHON_EXECUTABLE, path], 
                 capture_output=True, 
                 text=True, 
                 encoding="utf-8", 
                 env=env,
-                timeout=300  # 5 minute timeout
+                timeout=180  # 3 minute timeout for Render free tier
             )
         
         dura = round(time.time() - start, 2)
@@ -325,8 +313,9 @@ def run_script(script_name):
         return "\n".join(output_parts)
         
     except subprocess.TimeoutExpired:
-        return f"⏰ Script timed out after 5 minutes: {script_name}"
+        return f"⏰ Script timed out after 3 minutes: {script_name}\n\nNote: Render free tier has resource limitations. Consider upgrading for longer execution times."
     except Exception as e:
+        logger.error(f"Error executing {script_name}: {str(e)}")
         return f"💥 Error executing {script_name}: {str(e)}"
 
 # Professional Header
@@ -339,10 +328,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Environment Status Section
-# st.markdown("""
-# <div class="section-card">
-#     <h3 class="section-title">🔧 Environment Status</h3>
-# """, unsafe_allow_html=True)
+st.markdown("""
+<div class="section-card">
+    <h3 class="section-title">🔧 Environment Status</h3>
+""", unsafe_allow_html=True)
 
 # Check environment variables and display status
 required_env_vars = [
@@ -352,32 +341,31 @@ required_env_vars = [
     "GSPREAD_CLIENT_EMAIL", "GSPREAD_CLIENT_ID"
 ]
 
-# # System information
-# col1, col2 = st.columns(2)
-# with col1:
-#     st.markdown(f"<p><strong>Working Directory:</strong><br><code>{os.getcwd()}</code></p>", unsafe_allow_html=True)
-# with col2:
-#     st.markdown(f"<p><strong>Python Version:</strong><br><code>{sys.version.split()[0]}</code></p>", unsafe_allow_html=True)
+# System information
+col1, col2 = st.columns(2)
+with col1:
+    st.markdown(f"<p><strong>Working Directory:</strong><br><code>{os.getcwd()}</code></p>", unsafe_allow_html=True)
+with col2:
+    st.markdown(f"<p><strong>Python Version:</strong><br><code>{sys.version.split()[0]}</code></p>", unsafe_allow_html=True)
 
-# # Environment variables grid
-# st.markdown('<div class="env-grid">', unsafe_allow_html=True)
-# for var in required_env_vars:
-#     status_class = "success" if os.getenv(var) else "error"
-#     status_icon = "●" if os.getenv(var) else "●"
-#     masked_value = "Configured" if os.getenv(var) else "Not Set"
+# Environment variables grid
+st.markdown('<div class="env-grid">', unsafe_allow_html=True)
+for var in required_env_vars:
+    status_class = "success" if os.getenv(var) else "error"
+    masked_value = "Configured" if os.getenv(var) else "Not Set"
     
-#     st.markdown(f"""
-#     <div class="env-item">
-#         <div class="env-status {status_class}"></div>
-#         <div>
-#             <strong>{var}</strong><br>
-#             <span style="color: #94a3b8; font-size: 12px;">{masked_value}</span>
-#         </div>
-#     </div>
-#     """, unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="env-item">
+        <div class="env-status {status_class}"></div>
+        <div>
+            <strong>{var}</strong><br>
+            <span style="color: #94a3b8; font-size: 12px;">{masked_value}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-# st.markdown('</div>', unsafe_allow_html=True)
-# st.markdown("</div>", unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 # Scripts list
 dict_scripts = {
