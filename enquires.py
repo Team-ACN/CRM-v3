@@ -518,8 +518,8 @@ def main():
         # Configuration
         config = {
             "collection": "acnEnquiries",
-            "spreadsheet": "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k",
-            "sheet": "Enquiries from firebase Sheet"
+            "spreadsheet": "1sou1IFJMecKFsbvRF19PbzCqzvkjxvXzu5yF0uUzivk",
+            "sheet": "Sheet1"
         }
         
         logger.info(f"📋 Configuration:")
