@@ -225,8 +225,8 @@ def fetch_firestore_data(collection_name):
                 item.get("carpet", ""),
                 item.get("sbua", ""),
                 item.get("facing", ""),
-                format_price(item.get("totalAskPrice", "")),  # Format price properly
-                format_price(item.get("askPricePerSqft", "")),  # Format price properly
+                format_price(item.get("pricing", {}).get("totalAskPrice", "")),  
+                format_price(item.get("pricing", {}).get("pricePerSqft", "")), # Format price properly
                 item.get("unitType", ""),
                 item.get("micromarket", ""),
                 item.get("communityType", ""),  # New field
