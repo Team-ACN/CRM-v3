@@ -245,6 +245,7 @@ def fetch_firestore_data(collection_name):
                 item.get("ageOfInventory", ""),
                 item.get("ageOfStatus", ""),
                 item.get("status", ""),
+                item.get("stage","")
                 item.get("tenanted", ""),
                 item.get("ocReceived", ""),  # Now boolean in schema
                 item.get("bdaApproved", ""),  # New field
@@ -311,7 +312,7 @@ def write_to_google_sheet(data):
             "Ask Price / Sqft","Unit Type","Micromarket","Community Type","Extra Details","Floor No.",
             "Handover Date","Area","Map Location","Date of inventory added","Date of status last checked",
             "Last Check","Drive link for more info","Building Khata","Land Khata","Building Age",
-            "Age of Inventory","Age of Status","Status","Tenanted or Not",
+            "Age of Inventory","Age of Status","Status","stage","Tenanted or Not",
             "OC Received or not","BDA Approved","BIAPPA Approved","Current Status","Coordinates",
             "Exclusive","Exact Floor","eKhata","Photos","Videos","Documents","Source","Builder Name",
             "Sold Price (Lacs)","Sold Date","KAM Info"  # FIXED: Added the missing headers and KAM info
