@@ -245,25 +245,24 @@ def fetch_firestore_data(collection_name):
                 item.get("ageOfInventory", ""),
                 item.get("ageOfStatus", ""),
                 item.get("status", ""),
-                item.get("stage","")
-                # item.get("tenanted", ""),
-                # item.get("ocReceived", ""),  # Now boolean in schema
-                # item.get("bdaApproved", ""),  # New field
-                # item.get("biappaApproved", ""),  # New field
-                # item.get("currentStatus", ""),
-                # (f"{item.get('_geoloc', {}).get('lat','')}, {item.get('_geoloc', {}).get('lng','')}" if isinstance(item.get('_geoloc'), dict) else ""),
-                # item.get("exclusive", ""),  # Keeping from original script
-                # item.get("exactFloor", ""),  # Keeping from original script
-                # item.get("eKhata", ""),  # Keeping from original script
-                # # Handle new nested media structure
-                # ", ".join(item.get("media", {}).get("photos", [])) if isinstance(item.get("media", {}).get("photos"), list) else str(item.get("media", {}).get("photos", "")),
-                # ", ".join(item.get("media", {}).get("videos", [])) if isinstance(item.get("media", {}).get("videos"), list) else str(item.get("media", {}).get("videos", "")),
-                # ", ".join(item.get("media", {}).get("documents", [])) if isinstance(item.get("media", {}).get("documents"), list) else str(item.get("media", {}).get("documents", "")),
-                # item.get("source", ""),  # Source field
-                # item.get("builder_name", ""),  # Keeping from original script
-                # format_price(item.get("soldPrice", "")),  # Format sold price properly
-                # convert_unix_to_date(item.get("soldDate", "")),  # Format sold date properly
-                # extract_kam_info(item.get("soldPrice", "")),  # Extract KAM information
+                item.get("tenanted", ""),
+                item.get("ocReceived", ""),  # Now boolean in schema
+                item.get("bdaApproved", ""),  # New field
+                item.get("biappaApproved", ""),  # New field
+                item.get("currentStatus", ""),
+                (f"{item.get('_geoloc', {}).get('lat','')}, {item.get('_geoloc', {}).get('lng','')}" if isinstance(item.get('_geoloc'), dict) else ""),
+                item.get("exclusive", ""),  # Keeping from original script
+                item.get("exactFloor", ""),  # Keeping from original script
+                item.get("eKhata", ""),  # Keeping from original script
+                # Handle new nested media structure
+                ", ".join(item.get("media", {}).get("photos", [])) if isinstance(item.get("media", {}).get("photos"), list) else str(item.get("media", {}).get("photos", "")),
+                ", ".join(item.get("media", {}).get("videos", [])) if isinstance(item.get("media", {}).get("videos"), list) else str(item.get("media", {}).get("videos", "")),
+                ", ".join(item.get("media", {}).get("documents", [])) if isinstance(item.get("media", {}).get("documents"), list) else str(item.get("media", {}).get("documents", "")),
+                item.get("source", ""),  # Source field
+                item.get("builder_name", ""),  # Keeping from original script
+                format_price(item.get("soldPrice", "")),  # Format sold price properly
+                convert_unix_to_date(item.get("soldDate", "")),  # Format sold date properly
+                extract_kam_info(item.get("soldPrice", "")),  # Extract KAM information
             ]
             rows.append(row)
         print(f"✅ Successfully fetched {len(rows)} records from Firestore.")
@@ -312,7 +311,7 @@ def write_to_google_sheet(data):
             "Ask Price / Sqft","Unit Type","Micromarket","Community Type","Extra Details","Floor No.",
             "Handover Date","Area","Map Location","Date of inventory added","Date of status last checked",
             "Last Check","Drive link for more info","Building Khata","Land Khata","Building Age",
-            "Age of Inventory","Age of Status","Status","stage","Tenanted or Not",
+            "Age of Inventory","Age of Status","Status","Tenanted or Not",
             "OC Received or not","BDA Approved","BIAPPA Approved","Current Status","Coordinates",
             "Exclusive","Exact Floor","eKhata","Photos","Videos","Documents","Source","Builder Name",
             "Sold Price (Lacs)","Sold Date","KAM Info"  # FIXED: Added the missing headers and KAM info
