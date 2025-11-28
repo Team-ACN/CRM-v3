@@ -246,24 +246,24 @@ def fetch_firestore_data(collection_name):
                 item.get("ageOfStatus", ""),
                 item.get("status", ""),
                 item.get("stage","")
-                item.get("tenanted", ""),
-                item.get("ocReceived", ""),  # Now boolean in schema
-                item.get("bdaApproved", ""),  # New field
-                item.get("biappaApproved", ""),  # New field
-                item.get("currentStatus", ""),
-                (f"{item.get('_geoloc', {}).get('lat','')}, {item.get('_geoloc', {}).get('lng','')}" if isinstance(item.get('_geoloc'), dict) else ""),
-                item.get("exclusive", ""),  # Keeping from original script
-                item.get("exactFloor", ""),  # Keeping from original script
-                item.get("eKhata", ""),  # Keeping from original script
-                # Handle new nested media structure
-                ", ".join(item.get("media", {}).get("photos", [])) if isinstance(item.get("media", {}).get("photos"), list) else str(item.get("media", {}).get("photos", "")),
-                ", ".join(item.get("media", {}).get("videos", [])) if isinstance(item.get("media", {}).get("videos"), list) else str(item.get("media", {}).get("videos", "")),
-                ", ".join(item.get("media", {}).get("documents", [])) if isinstance(item.get("media", {}).get("documents"), list) else str(item.get("media", {}).get("documents", "")),
-                item.get("source", ""),  # Source field
-                item.get("builder_name", ""),  # Keeping from original script
-                format_price(item.get("soldPrice", "")),  # Format sold price properly
-                convert_unix_to_date(item.get("soldDate", "")),  # Format sold date properly
-                extract_kam_info(item.get("soldPrice", "")),  # Extract KAM information
+                # item.get("tenanted", ""),
+                # item.get("ocReceived", ""),  # Now boolean in schema
+                # item.get("bdaApproved", ""),  # New field
+                # item.get("biappaApproved", ""),  # New field
+                # item.get("currentStatus", ""),
+                # (f"{item.get('_geoloc', {}).get('lat','')}, {item.get('_geoloc', {}).get('lng','')}" if isinstance(item.get('_geoloc'), dict) else ""),
+                # item.get("exclusive", ""),  # Keeping from original script
+                # item.get("exactFloor", ""),  # Keeping from original script
+                # item.get("eKhata", ""),  # Keeping from original script
+                # # Handle new nested media structure
+                # ", ".join(item.get("media", {}).get("photos", [])) if isinstance(item.get("media", {}).get("photos"), list) else str(item.get("media", {}).get("photos", "")),
+                # ", ".join(item.get("media", {}).get("videos", [])) if isinstance(item.get("media", {}).get("videos"), list) else str(item.get("media", {}).get("videos", "")),
+                # ", ".join(item.get("media", {}).get("documents", [])) if isinstance(item.get("media", {}).get("documents"), list) else str(item.get("media", {}).get("documents", "")),
+                # item.get("source", ""),  # Source field
+                # item.get("builder_name", ""),  # Keeping from original script
+                # format_price(item.get("soldPrice", "")),  # Format sold price properly
+                # convert_unix_to_date(item.get("soldDate", "")),  # Format sold date properly
+                # extract_kam_info(item.get("soldPrice", "")),  # Extract KAM information
             ]
             rows.append(row)
         print(f"✅ Successfully fetched {len(rows)} records from Firestore.")
