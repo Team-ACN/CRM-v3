@@ -233,7 +233,7 @@ def fetch_firestore_data(collection_name):
                 item.get("extraDetails", ""),
                 item.get("floorNo", ""),
                 convert_unix_to_date(item.get("handoverDate")),  # Now treating as timestamp
-                item.get("area", ""),
+                item.get("zone", ""),
                 item.get("mapLocation", ""),
                 convert_unix_to_date(item.get("added")),
                 convert_unix_to_date(item.get("dateOfLastChecked")),
@@ -309,7 +309,7 @@ def write_to_google_sheet(data):
             "Property ID","CP ID","Property Name","QC ID","Asset Type","Sub Type",
             "Plot Size","Carpet (Sq Ft)","SBUA (Sq ft)","Facing","Total Ask Price (Lacs)",
             "Ask Price / Sqft","noOfBedrooms","Micromarket","Community Type","Extra Details","Floor No.",
-            "Handover Date","Area","Map Location","Date of inventory added","Date of status last checked",
+            "Handover Date","Zone","Map Location","Date of inventory added","Date of status last checked",
             "Last Check","Drive link for more info","Building Khata","Land Khata","Building Age",
             "Age of Inventory","Age of Status","Status","Tenanted or Not",
             "OC Received or not","BDA Approved","BIAPPA Approved","Current Status","Coordinates",
