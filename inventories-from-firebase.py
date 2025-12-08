@@ -259,7 +259,7 @@ def fetch_firestore_data(collection_name):
                 ", ".join(item.get("media", {}).get("videos", [])) if isinstance(item.get("media", {}).get("videos"), list) else str(item.get("media", {}).get("videos", "")),
                 ", ".join(item.get("media", {}).get("documents", [])) if isinstance(item.get("media", {}).get("documents"), list) else str(item.get("media", {}).get("documents", "")),
                 item.get("source", ""),  # Source field
-                item.get("builder_name", ""),  # Keeping from original script
+                item.get("listingType", ""),  # Keeping from original script
                 format_price(item.get("soldPrice", "")),  # Format sold price properly
                 convert_unix_to_date(item.get("soldDate", "")),  # Format sold date properly
                 extract_kam_info(item.get("soldPrice", "")),  # Extract KAM information
@@ -313,7 +313,7 @@ def write_to_google_sheet(data):
             "Last Check","Drive link for more info","Building Khata","Land Khata","Building Age",
             "Age of Inventory","Age of Status","Status","Tenanted or Not",
             "OC Received or not","BDA Approved","BIAPPA Approved","Current Status","Coordinates",
-            "Exclusive","Exact Floor","eKhata","Photos","Videos","Documents","Source","Builder Name",
+            "Exclusive","Exact Floor","eKhata","Photos","Videos","Documents","Source","listingType",
             "Sold Price (Lacs)","Sold Date","KAM Info"  # FIXED: Added the missing headers and KAM info
         ]
         payload = [headers] + data
