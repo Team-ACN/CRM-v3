@@ -227,7 +227,7 @@ def fetch_firestore_data(collection_name):
                 item.get("facing", ""),
                 format_price(item.get("pricing", {}).get("totalAskPrice", "")),  
                 format_price(item.get("pricing", {}).get("pricePerSqft", "")), # Format price properly
-                item.get("unitType", ""),
+                item.get("noOfBedrooms", ""),
                 item.get("micromarket", ""),
                 item.get("communityType", ""),  # New field
                 item.get("extraDetails", ""),
@@ -308,7 +308,7 @@ def write_to_google_sheet(data):
         headers = [
             "Property ID","CP ID","Property Name","QC ID","Asset Type","Sub Type",
             "Plot Size","Carpet (Sq Ft)","SBUA (Sq ft)","Facing","Total Ask Price (Lacs)",
-            "Ask Price / Sqft","Unit Type","Micromarket","Community Type","Extra Details","Floor No.",
+            "Ask Price / Sqft","noOfBedrooms","Micromarket","Community Type","Extra Details","Floor No.",
             "Handover Date","Area","Map Location","Date of inventory added","Date of status last checked",
             "Last Check","Drive link for more info","Building Khata","Land Khata","Building Age",
             "Age of Inventory","Age of Status","Status","Tenanted or Not",

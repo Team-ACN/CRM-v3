@@ -227,7 +227,7 @@ def fetch_firestore_data(collection_name):
                 item.get("facing", ""),
                 format_price(item.get("pricing", {}).get("totalAskPrice", "")),  
                 format_price(item.get("pricing", {}).get("pricePerSqft", "")), # Format price properly
-                item.get("unitType", ""),
+                item.get("noOfBedrooms", ""),
                 item.get("micromarket", ""),
                 item.get("communityType", ""),  # New field
                 item.get("extraDetails", ""),
