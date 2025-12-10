@@ -254,8 +254,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Function to run external scripts
-def run_script(script_name):
+# Function to run external scripts with live output
+def run_script(script_name, timeout=300):
     path = os.path.join(os.getcwd(), script_name)
     if not os.path.exists(path):
         return f"⚠️ Script not found: `{script_name}`\n\nPath checked: {path}"
@@ -277,9 +277,9 @@ def run_script(script_name):
         return f"❌ Missing required environment variables: {', '.join(missing_vars)}\n\nPlease ensure all required environment variables are set in your .env file\n\nCurrent working directory: {os.getcwd()}\n.env file exists: {os.path.exists('.env')}"
     
     start = time.time()
+    live_box = st.empty()
     try:
-        with st.spinner(f"⚡ Executing {script_name}"):
-            # Set environment variables for better subprocess handling
+        with st.spinner(f"⚡ Executing {script_name} (streaming output)"):
             env = os.environ.copy()
             env.update({
                 "PYTHONUTF8": "1",
@@ -287,45 +287,70 @@ def run_script(script_name):
                 "PYTHONUNBUFFERED": "1"
             })
             
-            # Run the script with improved error handling
-            proc = subprocess.run(
-                [PYTHON_EXECUTABLE, path], 
-                capture_output=True, 
-                text=True, 
-                encoding="utf-8", 
-                env=env,
-                timeout=300  # 5 minute timeout
+            proc = subprocess.Popen(
+                [PYTHON_EXECUTABLE, path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                env=env
             )
-        
+            
+            stdout_lines = []
+            stderr_lines = []
+            
+            # Stream output in near-real-time
+            while True:
+                if proc.poll() is not None:
+                    break
+                line = proc.stdout.readline()
+                if line:
+                    stdout_lines.append(line.rstrip())
+                err_line = proc.stderr.readline()
+                if err_line:
+                    stderr_lines.append(err_line.rstrip())
+                
+                # Update live view with tail of output
+                combined_preview = "\n".join((stdout_lines + stderr_lines)[-50:])
+                live_box.text(combined_preview if combined_preview else "⌛ Waiting for output...")
+                
+                if time.time() - start > timeout:
+                    proc.kill()
+                    return f"⏰ Script timed out after {timeout} seconds: {script_name}"
+                time.sleep(0.05)
+            
+            # Capture remaining output
+            remaining_out, remaining_err = proc.communicate(timeout=5)
+            if remaining_out:
+                stdout_lines.append(remaining_out.strip())
+            if remaining_err:
+                stderr_lines.append(remaining_err.strip())
+            
         dura = round(time.time() - start, 2)
         
-        # Process output
-        stdout = proc.stdout.strip() if proc.stdout else ""
-        stderr = proc.stderr.strip() if proc.stderr else ""
+        # Final live preview
+        combined_preview = "\n".join((stdout_lines + stderr_lines)[-50:])
+        live_box.text(combined_preview if combined_preview else "✅ Completed with no output.")
         
-        # Create detailed output
-        output_parts = []
-        output_parts.append(f"⏱️ Execution time: {dura} seconds")
-        output_parts.append(f"📊 Return code: {proc.returncode}")
+        stdout = "\n".join(stdout_lines).strip()
+        stderr = "\n".join(stderr_lines).strip()
         
-        if proc.returncode == 0:
-            output_parts.append("✅ Script executed successfully!")
-        else:
-            output_parts.append("❌ Script failed!")
-        
+        output_parts = [
+            f"⏱️ Execution time: {dura} seconds",
+            f"📊 Return code: {proc.returncode}",
+            "✅ Script executed successfully!" if proc.returncode == 0 else "❌ Script failed!",
+        ]
         if stdout:
             output_parts.append(f"\n📤 STDOUT:\n{stdout}")
-        
         if stderr:
             output_parts.append(f"\n⚠️ STDERR:\n{stderr}")
-        
         if not stdout and not stderr:
             output_parts.append("\nℹ️ No output received from script")
         
         return "\n".join(output_parts)
         
     except subprocess.TimeoutExpired:
-        return f"⏰ Script timed out after 5 minutes: {script_name}"
+        return f"⏰ Script timed out after {timeout} seconds: {script_name}"
     except Exception as e:
         return f"💥 Error executing {script_name}: {str(e)}"
 
@@ -386,6 +411,7 @@ dict_scripts = {
     "Enquiries": {"file": "enquires.py", "desc": "Sync enquiries from Firebase"},
     "Tried Access": {"file": "leads.py", "desc": "Sync tried access data from Firebase"},
     "Inventories": {"file": "inventories-from-firebase.py", "desc": "Sync inventories from Firebase"},
+    "Inventories New": {"file": "new-inventory.py", "desc": "Sync unified inventories to Google Sheet"},
     "Requirements": {"file": "req.py", "desc": "Sync requirements from Firebase"},
     "ConnectHistory": {"file": "connecthistory.py", "desc": "Sync connect history from Firebase"},
     "QC Properties": {"file": "QC.py", "desc": "Sync QC properties from Firebase"}
