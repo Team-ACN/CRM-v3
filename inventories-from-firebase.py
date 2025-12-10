@@ -221,7 +221,7 @@ def fetch_firestore_data(collection_name):
                 item.get("qcId", ""),  # New field
                 item.get("assetType", ""),
                 item.get("subType", ""),
-                item.get("plotSize", ""),
+                item.get("plotArea", ""),
                 item.get("carpet", ""),
                 item.get("sbua", ""),
                 item.get("facing", ""),
