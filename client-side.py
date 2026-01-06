@@ -5,451 +5,159 @@ import time
 import sys
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
-# Get the Python interpreter path
+# Configuration
 PYTHON_EXECUTABLE = sys.executable
+PAGE_TITLE = "ACN Command Center"
+PAGE_ICON = "⚡"
 
-# Streamlit page configuration
-st.set_page_config(page_title="ACN Script Runner", layout="wide", initial_sidebar_state="collapsed", page_icon="🎯")
+st.set_page_config(
+    page_title=PAGE_TITLE, 
+    layout="wide", 
+    initial_sidebar_state="collapsed", 
+    page_icon=PAGE_ICON
+)
 
-# Professional enterprise theme
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-    
-    .stApp { 
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
-        font-family: 'Inter', sans-serif;
-    }
-    
-    .main-header {
-        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-        border: 1px solid rgba(148, 163, 184, 0.1);
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 16px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .main-header::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4, #10b981);
-    }
-    
-    .header-icon {
-        font-size: 32px;
-        margin-bottom: 8px;
-        display: block;
-    }
-    
-    .header-title {
-        font-size: 28px;
-        font-weight: 700;
-        color: #ffffff;
-        margin: 0 0 6px 0;
-        letter-spacing: -0.02em;
-    }
-    
-    .header-subtitle {
-        font-size: 14px;
-        color: #94a3b8;
-        margin: 0;
-        font-weight: 400;
-    }
-    
-    .section-card {
-        background: rgba(30, 41, 59, 0.6);
-        border: 1px solid rgba(148, 163, 184, 0.1);
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 12px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-        backdrop-filter: blur(10px);
-    }
-    
-    .section-title {
-        font-size: 18px;
-        font-weight: 600;
-        color: #ffffff;
-        margin: 0 0 12px 0;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .section-title::before {
-        content: '';
-        width: 4px;
-        height: 24px;
-        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-        border-radius: 2px;
-    }
-    
-    .stButton button {
-        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-        border: none;
-        color: #ffffff;
-        border-radius: 8px;
-        padding: 10px 20px;
-        font-weight: 600;
-        font-size: 14px;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-        text-transform: none;
-        letter-spacing: 0;
-        width: 100%;
-        margin-bottom: 6px;
-    }
-    
-    .stButton button:hover {
-        background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
-    }
-    
-    .stButton button:active {
-        transform: translateY(0);
-        box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
-    }
-    
-    .stTextArea textarea {
-        background: rgba(15, 23, 42, 0.8) !important;
-        border: 1px solid rgba(148, 163, 184, 0.2) !important;
-        border-radius: 12px !important;
-        color: #e2e8f0 !important;
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 14px !important;
-        padding: 16px !important;
-        line-height: 1.6 !important;
-    }
-    
-    .stTextArea textarea:focus {
-        border-color: #3b82f6 !important;
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
-    }
-    
-    h1, h2, h3 {
-        font-family: 'Inter', sans-serif !important;
-        color: #ffffff !important;
-        font-weight: 600 !important;
-        letter-spacing: -0.01em !important;
-    }
-    
-    p {
-        color: #cbd5e0;
-        line-height: 1.6;
-    }
-    
-    code {
-        color: #06b6d4;
-        background: rgba(6, 182, 212, 0.1);
-        padding: 4px 8px;
-        border-radius: 6px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 14px;
-        border: 1px solid rgba(6, 182, 212, 0.2);
-    }
-    
-    .status-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-    }
-    
-    .status-success {
-        background: rgba(16, 185, 129, 0.1);
-        border: 1px solid rgba(16, 185, 129, 0.2);
-        color: #10b981;
-    }
-    
-    .status-error {
-        background: rgba(239, 68, 68, 0.1);
-        border: 1px solid rgba(239, 68, 68, 0.2);
-        color: #ef4444;
-    }
-    
-    .env-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        margin-top: 12px;
-    }
-    
-    .env-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        background: rgba(15, 23, 42, 0.5);
-        border: 1px solid rgba(148, 163, 184, 0.1);
-        border-radius: 6px;
-        font-size: 12px;
-    }
-    
-    .env-status {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-    }
-    
-    .env-status.success {
-        background: #10b981;
-    }
-    
-    .env-status.error {
-        background: #ef4444;
-    }
-    
-    .footer {
-        background: rgba(15, 23, 42, 0.8);
-        border: 1px solid rgba(148, 163, 184, 0.1);
-        border-radius: 8px;
-        padding: 12px;
-        margin-top: 16px;
-        text-align: center;
-    }
-    
-    .footer-text {
-        color: #64748b;
-        font-size: 14px;
-        margin: 0;
-    }
-    
-    /* Hide Streamlit branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Custom scrollbar */
-    ::-webkit-scrollbar {
-        width: 8px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: rgba(15, 23, 42, 0.5);
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: rgba(148, 163, 184, 0.3);
-        border-radius: 4px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: rgba(148, 163, 184, 0.5);
-    }
-    </style>
-""", unsafe_allow_html=True)
+# -----------------------------------------------------------------------------
+# Business Logic
+# -----------------------------------------------------------------------------
 
-# Function to run external scripts with live output
-def run_script(script_name, timeout=300):
+def run_script(script_name: str, status_container):
+    """Executes a python script with live status updates."""
     path = os.path.join(os.getcwd(), script_name)
+    
     if not os.path.exists(path):
-        return f"⚠️ Script not found: `{script_name}`\n\nPath checked: {path}"
+        status_container.error(f"❌ Script not found: {script_name}")
+        return
     
-    # Check for required environment variables
-    required_env_vars = [
-        "FIREBASE_PROJECT_ID", "FIREBASE_PRIVATE_KEY_ID", "FIREBASE_PRIVATE_KEY",
-        "FIREBASE_CLIENT_EMAIL", "FIREBASE_CLIENT_ID",
-        "GSPREAD_PROJECT_ID", "GSPREAD_PRIVATE_KEY_ID", "GSPREAD_PRIVATE_KEY",
-        "GSPREAD_CLIENT_EMAIL", "GSPREAD_CLIENT_ID"
+    # Environment Check
+    required_vars = [
+        "FIREBASE_PROJECT_ID", "FIREBASE_PRIVATE_KEY", "GSPREAD_PROJECT_ID", "GSPREAD_PRIVATE_KEY"
     ]
+    missing = [v for v in required_vars if not os.getenv(v)]
+    if missing:
+        status_container.warning(f"⚠️ Missing Env Vars: {', '.join(missing)}")
+        return
+
+    start_time = time.time()
+    terminal_output = []
     
-    missing_vars = []
-    for var in required_env_vars:
-        if not os.getenv(var):
-            missing_vars.append(var)
-    
-    if missing_vars:
-        return f"❌ Missing required environment variables: {', '.join(missing_vars)}\n\nPlease ensure all required environment variables are set in your .env file\n\nCurrent working directory: {os.getcwd()}\n.env file exists: {os.path.exists('.env')}"
-    
-    start = time.time()
-    live_box = st.empty()
     try:
-        with st.spinner(f"⚡ Executing {script_name} (streaming output)"):
-            env = os.environ.copy()
-            env.update({
-                "PYTHONUTF8": "1",
-                "PYTHONIOENCODING": "utf-8",
-                "PYTHONUNBUFFERED": "1"
-            })
-            
-            proc = subprocess.Popen(
-                [PYTHON_EXECUTABLE, path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                env=env
-            )
-            
-            stdout_lines = []
-            stderr_lines = []
-            
-            # Stream output in near-real-time
-            while True:
-                if proc.poll() is not None:
-                    break
-                line = proc.stdout.readline()
-                if line:
-                    stdout_lines.append(line.rstrip())
-                err_line = proc.stderr.readline()
-                if err_line:
-                    stderr_lines.append(err_line.rstrip())
-                
-                # Update live view with tail of output
-                combined_preview = "\n".join((stdout_lines + stderr_lines)[-50:])
-                live_box.text(combined_preview if combined_preview else "⌛ Waiting for output...")
-                
-                if time.time() - start > timeout:
-                    proc.kill()
-                    return f"⏰ Script timed out after {timeout} seconds: {script_name}"
-                time.sleep(0.05)
-            
-            # Capture remaining output
-            remaining_out, remaining_err = proc.communicate(timeout=5)
-            if remaining_out:
-                stdout_lines.append(remaining_out.strip())
-            if remaining_err:
-                stderr_lines.append(remaining_err.strip())
-            
-        dura = round(time.time() - start, 2)
+        # Prepare environment
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+
+        process = subprocess.Popen(
+            [PYTHON_EXECUTABLE, path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, # Merge stderr into stdout
+            text=True,
+            bufsize=1, # Line buffered
+            env=env
+        )
         
-        # Final live preview
-        combined_preview = "\n".join((stdout_lines + stderr_lines)[-50:])
-        live_box.text(combined_preview if combined_preview else "✅ Completed with no output.")
+        # Live Stream inside st.status
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            
+            if line:
+                clean_line = line.strip()
+                terminal_output.append(clean_line)
+                # Write to the expandable status area
+                status_container.write(clean_line)
+
+        # Final Cleanup
+        return_code = process.poll()
+        duration = time.time() - start_time
         
-        stdout = "\n".join(stdout_lines).strip()
-        stderr = "\n".join(stderr_lines).strip()
-        
-        output_parts = [
-            f"⏱️ Execution time: {dura} seconds",
-            f"📊 Return code: {proc.returncode}",
-            "✅ Script executed successfully!" if proc.returncode == 0 else "❌ Script failed!",
-        ]
-        if stdout:
-            output_parts.append(f"\n📤 STDOUT:\n{stdout}")
-        if stderr:
-            output_parts.append(f"\n⚠️ STDERR:\n{stderr}")
-        if not stdout and not stderr:
-            output_parts.append("\nℹ️ No output received from script")
-        
-        return "\n".join(output_parts)
-        
-    except subprocess.TimeoutExpired:
-        return f"⏰ Script timed out after {timeout} seconds: {script_name}"
+        if return_code == 0:
+            status_container.update(label=f"✅ {script_name} completed in {duration:.2f}s", state="complete", expanded=False)
+        else:
+            status_container.update(label=f"❌ {script_name} failed (Exit Code: {return_code})", state="error", expanded=True)
+            
     except Exception as e:
-        return f"💥 Error executing {script_name}: {str(e)}"
+        status_container.error(f"💥 Execution Error: {str(e)}")
 
-# Professional Header
-st.markdown("""
-    <div class="main-header">
-      <div class="header-icon">🎯</div>
-      <h1 class="header-title">ACN Command Center</h1>
-      <p class="header-subtitle">Enterprise Script Management Interface</p>
-    </div>
-""", unsafe_allow_html=True)
+# -----------------------------------------------------------------------------
+# UI Layout
+# -----------------------------------------------------------------------------
 
-# Environment Status Section
-# st.markdown("""
-# <div class="section-card">
-#     <h3 class="section-title">🔧 Environment Status</h3>
-# """, unsafe_allow_html=True)
+# -----------------------------------------------------------------------------
+# UI Layout
+# -----------------------------------------------------------------------------
 
-# Check environment variables and display status
-required_env_vars = [
-    "FIREBASE_PROJECT_ID", "FIREBASE_PRIVATE_KEY_ID", "FIREBASE_PRIVATE_KEY",
-    "FIREBASE_CLIENT_EMAIL", "FIREBASE_CLIENT_ID",
-    "GSPREAD_PROJECT_ID", "GSPREAD_PRIVATE_KEY_ID", "GSPREAD_PRIVATE_KEY",
-    "GSPREAD_CLIENT_EMAIL", "GSPREAD_CLIENT_ID"
-]
+st.title("⚡ ACN Command Center")
+st.markdown("Manage and execute your CRM scripts.")
+st.divider()
 
-# # System information
-# col1, col2 = st.columns(2)
-# with col1:
-#     st.markdown(f"<p><strong>Working Directory:</strong><br><code>{os.getcwd()}</code></p>", unsafe_allow_html=True)
-# with col2:
-#     st.markdown(f"<p><strong>Python Version:</strong><br><code>{sys.version.split()[0]}</code></p>", unsafe_allow_html=True)
+# --- Section 1: Leads & Growth ---
+st.subheader("🚀 Leads & Growth")
+col1, col2, col3 = st.columns(3)
 
-# # Environment variables grid
-# st.markdown('<div class="env-grid">', unsafe_allow_html=True)
-# for var in required_env_vars:
-#     status_class = "success" if os.getenv(var) else "error"
-#     status_icon = "●" if os.getenv(var) else "●"
-#     masked_value = "Configured" if os.getenv(var) else "Not Set"
+with col1:
+    if st.button("👥 Sync All Leads", use_container_width=True):
+        with st.status("Running All Leads Sync...", expanded=True) as status:
+            run_script("all-leads.py", status)
+            
+    if st.button("❓ Sync Enquiries", use_container_width=True):
+        with st.status("Running Enquiries Sync...", expanded=True) as status:
+            run_script("enquires.py", status)
+
+with col2:
+    if st.button("🎯 Sync Req. Enquiries", use_container_width=True):
+        with st.status("Running Requirement Enquiries Sync...", expanded=True) as status:
+            run_script("requirement_enquiries.py", status)
     
-#     st.markdown(f"""
-#     <div class="env-item">
-#         <div class="env-status {status_class}"></div>
-#         <div>
-#             <strong>{var}</strong><br>
-#             <span style="color: #94a3b8; font-size: 12px;">{masked_value}</span>
-#         </div>
-#     </div>
-#     """, unsafe_allow_html=True)
+    if st.button("🔐 Sync Tried Access", use_container_width=True):
+        with st.status("Running Tried Access Sync...", expanded=True) as status:
+            run_script("leads.py", status)
 
-# st.markdown('</div>', unsafe_allow_html=True)
-# st.markdown("</div>", unsafe_allow_html=True)
+with col3:
+    if st.button("🛡️ Sync Agents", use_container_width=True):
+        with st.status("Running Agents Sync...", expanded=True) as status:
+            run_script("agents.py", status)
 
-# Scripts list
-dict_scripts = {
-    "Leads": {"file": "all-leads.py", "desc": "Sync leads data from Firebase (direct source only)"},
-    "Agents": {"file": "agents.py", "desc": "Sync agents data from Firebase"},
-    "Enquiries": {"file": "enquires.py", "desc": "Sync enquiries from Firebase"},
-    "Tried Access": {"file": "leads.py", "desc": "Sync tried access data from Firebase"},
-    "Inventories": {"file": "inventories-from-firebase.py", "desc": "Sync inventories from Firebase"},
-    "Inventories New": {"file": "new-inventory.py", "desc": "Sync unified inventories to Google Sheet"},
-    "Requirements": {"file": "req.py", "desc": "Sync requirements from Firebase"},
-    "ConnectHistory": {"file": "connecthistory.py", "desc": "Sync connect history from Firebase"},
-    "QC Properties": {"file": "QC.py", "desc": "Sync QC properties from Firebase"}
-}
+st.divider()
 
-# Operations Section
-st.markdown("""
-<div class="section-card">
-    <h3 class="section-title">⚡ Available Operations</h3>
-""", unsafe_allow_html=True)
+# --- Section 2: Inventory ---
+st.subheader("🏢 Inventory Management")
+col1, col2, col3 = st.columns(3)
 
-# Create a grid layout for buttons
-button_cols = st.columns(2)
-for idx, (key, info) in enumerate(dict_scripts.items()):
-    with button_cols[idx % 2]:
-        if st.button(f"Execute {key}", key=f"btn_{key}", use_container_width=True):
-            st.session_state.output = run_script(info['file'])
+with col1:
+    if st.button("📦 Sync Inventories", use_container_width=True):
+        with st.status("Running Inventories Sync...", expanded=True) as status:
+            run_script("inventories-from-firebase.py", status)
 
-st.markdown("</div>", unsafe_allow_html=True)
+with col2:
+    if st.button("🆕 Sync New Inventory", use_container_width=True):
+        with st.status("Running New Inventory Sync...", expanded=True) as status:
+            run_script("new-inventory.py", status)
 
-# Output display
-if 'output' in st.session_state:
-    st.markdown("""
-    <div class="section-card">
-        <h3 class="section-title">📊 Operation Output</h3>
-    """, unsafe_allow_html=True)
-    
-    st.text_area("Script Output", st.session_state.output, height=300, key="output_area", label_visibility="collapsed")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
+with col3:
+    if st.button("🔍 Sync QC Properties", use_container_width=True):
+        with st.status("Running QC Sync...", expanded=True) as status:
+            run_script("QC.py", status)
 
-# Professional Footer
-st.markdown("""
-<div class="footer">
-    <p class="footer-text">
-        🚀 ACN Command Center | 
-        ⚡ Enterprise Script Management | 
-        🔒 Secure Cloud Environment
-    </p>
-</div>
-""", unsafe_allow_html=True)
+st.divider()
+
+# --- Section 3: System ---
+st.subheader("⚙️ Data & System")
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("📋 Sync Requirements", use_container_width=True):
+        with st.status("Running Requirements Sync...", expanded=True) as status:
+            run_script("req.py", status)
+            
+with col2:
+    if st.button("📞 Sync Call History", use_container_width=True):
+        with st.status("Running Call History Sync...", expanded=True) as status:
+            run_script("connecthistory.py", status)
+
+# Footer / Info
+st.caption(f"Environment: {os.getcwd()} | Python: {sys.version.split()[0]}")

@@ -44,15 +44,16 @@ _connection_lock = threading.Lock()
 _firebase_db = None
 _sheets_service = None
 
-# Schema definition
+# Schema definition for Requirement Enquiries
 SCHEMA_FIELDS = [
-    "added", "buyerCpId", "buyerName", "buyerNumber", "enquiryId",
-    "isContactShared", "isNew", "lastModified", "propertyId", 
-    "propertyName", "reviews", "sellerCpId", "sellerName", 
+    "added", "assetType", "buyerCpId", "buyerName", "buyerNumber",
+    "enquiryId", "isContactShared", "lastModified", "micromarket",
+    "propertyId", "propertyName", "propertyType", "requirementId",
+    "requirementType", "reviews", "sellerCpId", "sellerName",
     "sellerNumber", "status"
 ]
 
-BOOLEAN_FIELDS = {"isContactShared", "isNew"}
+BOOLEAN_FIELDS = {"isContactShared"}
 TIMESTAMP_FIELDS = {"added", "lastModified"}
 
 class FastDataProcessor:
@@ -410,20 +411,20 @@ def write_to_sheets_optimized(data: List[Dict], spreadsheet_id: str, sheet_name:
         # Use quoted sheet name for safety with spaces
         quoted_sheet_name = f"'{sheet_name}'"
         
-        # Clear only the target columns (A-O) in one operation
-        clear_range = f"{quoted_sheet_name}!A:O"
+        # Clear only the target columns (A-S for 19 columns) in one operation
+        clear_range = f"{quoted_sheet_name}!A:S"
         service.spreadsheets().values().clear(
             spreadsheetId=spreadsheet_id,
             range=clear_range,
             body={}
         ).execute()
         
-        logger.info("🧹 Cleared target columns A-O")
+        logger.info("🧹 Cleared target columns A-S")
         
         # Determine optimal write strategy based on data size
         if len(values) <= SHEETS_BATCH_SIZE:
             # Single batch write (fastest for most cases)
-            update_range = f"{quoted_sheet_name}!A1:O{len(values)}"
+            update_range = f"{quoted_sheet_name}!A1:S{len(values)}"
             
             body = {
                 "values": values,
@@ -453,7 +454,7 @@ def write_to_sheets_optimized(data: List[Dict], spreadsheet_id: str, sheet_name:
                 end_row = start_row + len(batch) - 1
                 
                 batch_data.append({
-                    "range": f"{quoted_sheet_name}!A{start_row}:O{end_row}",
+                    "range": f"{quoted_sheet_name}!A{start_row}:S{end_row}",
                     "values": batch,
                     "majorDimension": "ROWS"
                 })
@@ -497,7 +498,7 @@ def write_to_sheets_optimized(data: List[Dict], spreadsheet_id: str, sheet_name:
                                 "sheetId": sheet_id,
                                 "dimension": "COLUMNS",
                                 "startIndex": 0,
-                                "endIndex": 15  # Columns A-O
+                                "endIndex": 19  # Columns A-S
                             }
                         }
                     }]
@@ -542,7 +543,7 @@ def main():
     
     try:
         logger.info("="*60)
-        logger.info("⚡ ULTRA-FAST FIRESTORE TO SHEETS SYNC")
+        logger.info("⚡ ULTRA-FAST FIRESTORE TO SHEETS SYNC (Requirements Enquiries)")
         logger.info(f"🔧 Using {MAX_WORKERS} parallel workers")
         logger.info(f"💾 Batch size: {BATCH_SIZE} | Chunk size: {CHUNK_SIZE}")
         logger.info("="*60)
@@ -553,15 +554,15 @@ def main():
         
         # Configuration
         config = {
-            "collection": "acnEnquiries",
-            "spreadsheet": "1sou1IFJMecKFsbvRF19PbzCqzvkjxvXzu5yF0uUzivk",
-            "sheet": "Sheet1"
+            "collection": "acnRequirementsEnquiries",
+            "spreadsheet": "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k",
+            "sheet": "Requirement Enquiries"
         }
         
         logger.info(f"📋 Configuration:")
         logger.info(f"   • Collection: {config['collection']}")
         logger.info(f"   • Sheet: {config['sheet']}")
-        logger.info(f"   • Columns: A-O (15 fields)")
+        logger.info(f"   • Columns: A-S (19 fields)")
         
         # Initialize services
         logger.info("🔌 Initializing services...")
@@ -607,7 +608,7 @@ def main():
         logger.info(f"   • Process: {process_duration:.2f}s ({len(processed_data)/process_duration:.0f} docs/sec)" if process_duration > 0 else f"   • Process: {process_duration:.2f}s")
         
         if write_duration > 0:
-            logger.info(f"   • Write: {write_duration:.2f}s ({len(processed_data)*15/write_duration:.0f} cells/sec)")
+            logger.info(f"   • Write: {write_duration:.2f}s ({len(processed_data)*19/write_duration:.0f} cells/sec)")
         else:
             logger.info(f"   • Write: {write_duration:.2f}s")
         
