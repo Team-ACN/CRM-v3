@@ -32,7 +32,7 @@ SHEET_NAME      = "Requirements from firebase"
 # ---------------------------
 # Firestore Collection Name
 # ---------------------------
-FIRESTORE_COLLECTION_NAME = os.getenv("FIRESTORE_REQUIREMENTS_COLLECTION_NAME", "acnRequirements")
+FIRESTORE_COLLECTION_NAME = os.getenv("FIRESTORE_REQUIREMENTS_COLLECTION_NAME", "acnRequirementsTest")
 
 # ---------------------------
 # Initialize Firebase Admin SDK
