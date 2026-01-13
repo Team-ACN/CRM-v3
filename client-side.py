@@ -147,7 +147,7 @@ st.divider()
 
 # --- Section 3: System ---
 st.subheader("⚙️ Data & System")
-col1, col2 = st.columns(2)
+col1, col2 ,col3= st.columns(3)
 
 with col1:
     if st.button("📋 Sync Requirements", use_container_width=True):
