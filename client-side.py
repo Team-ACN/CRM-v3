@@ -155,9 +155,14 @@ with col1:
             run_script("req.py", status)
             
 with col2:
-    if st.button("📞 Sync Call History", use_container_width=True):
+    if st.button("📞 Sync Agents Call History", use_container_width=True):
         with st.status("Running Call History Sync...", expanded=True) as status:
             run_script("connecthistory.py", status)
+
+with col3:
+    if st.button("📞 Sync Leads Call History", use_container_width=True):
+        with st.status("Running Call History Sync...", expanded=True) as status:
+            run_script("connecthistory_leads.py", status)
 
 # Footer / Info
 st.caption(f"Environment: {os.getcwd()} | Python: {sys.version.split()[0]}")
