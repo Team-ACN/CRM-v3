@@ -318,8 +318,8 @@ def parallel_fetch_documents(collection_name: str) -> List[Tuple[str, Dict]]:
     processed_count = 0
     
     try:
-        # Stream documents efficiently
-        doc_stream = collection_ref.stream()
+        # Stream documents efficiently (Ordered by Property ID)
+        doc_stream = collection_ref.order_by("propertyId").stream()
         
         # Process in large batches to minimize overhead
         while True:
@@ -327,6 +327,7 @@ def parallel_fetch_documents(collection_name: str) -> List[Tuple[str, Dict]]:
             batch = list(islice(doc_stream, BATCH_SIZE))
             if not batch:
                 break
+            
             
             # Convert to tuples immediately (more memory efficient)
             with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -385,24 +386,34 @@ def process_documents_parallel(documents: List[Tuple[str, Dict]]) -> List[List[s
     chunks = [documents[i:i + CHUNK_SIZE] for i in range(0, len(documents), CHUNK_SIZE)]
     total_chunks = len(chunks)
     
+    # Store results by index to preserve order
+    chunk_results = [None] * total_chunks
+
     # Process chunks in parallel
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        future_to_chunk = {
+        future_to_idx = {
             executor.submit(processor.process_chunk, chunk): idx 
             for idx, chunk in enumerate(chunks)
         }
         
         completed = 0
-        for future in as_completed(future_to_chunk):
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
             try:
                 chunk_result = future.result()
-                if chunk_result:
-                    processed_data.extend(chunk_result)
+                chunk_results[idx] = chunk_result or []
+                
                 completed += 1
                 if completed % 10 == 0:
                     logger.info(f"⚡ Processed chunk {completed}/{total_chunks}")
             except Exception as e:
                 logger.error(f"Processing error in chunk: {e}", exc_info=True)
+                chunk_results[idx] = []
+
+    # Reassemble in order
+    for result in chunk_results:
+        if result:
+            processed_data.extend(result)
     
     process_duration = time.time() - process_start
     logger.info(f"✅ Processed {len(processed_data)} documents in {process_duration:.2f}s")
