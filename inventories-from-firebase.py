@@ -318,8 +318,8 @@ def parallel_fetch_documents(collection_name: str) -> List[Tuple[str, Dict]]:
     processed_count = 0
     
     try:
-        # Stream documents efficiently (Ordered by Property ID)
-        doc_stream = collection_ref.order_by("propertyId").stream()
+        # Stream documents efficiently
+        doc_stream = collection_ref.stream()
         
         # Process in large batches to minimize overhead
         while True:
