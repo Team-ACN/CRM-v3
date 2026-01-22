@@ -25,7 +25,7 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 
 def run_script(script_name: str, status_container):
-    """Executes a python script with live status updates."""
+    """Executes a python script and shows only final output."""
     path = os.path.join(os.getcwd(), script_name)
     
     if not os.path.exists(path):
@@ -42,7 +42,6 @@ def run_script(script_name: str, status_container):
         return
 
     start_time = time.time()
-    terminal_output = []
     
     try:
         # Prepare environment
@@ -50,35 +49,30 @@ def run_script(script_name: str, status_container):
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
 
-        process = subprocess.Popen(
+        status_container.write("⏳ Processing... Please wait.")
+        
+        # Run process and capture output
+        result = subprocess.run(
             [PYTHON_EXECUTABLE, path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, # Merge stderr into stdout
+            capture_output=True,
             text=True,
-            bufsize=1, # Line buffered
             env=env
         )
         
-        # Live Stream inside st.status
-        while True:
-            line = process.stdout.readline()
-            if not line and process.poll() is not None:
-                break
-            
-            if line:
-                clean_line = line.strip()
-                terminal_output.append(clean_line)
-                # Write to the expandable status area
-                status_container.write(clean_line)
-
-        # Final Cleanup
-        return_code = process.poll()
         duration = time.time() - start_time
+        # Combine stdout and stderr if needed, though usually captured together if desired. 
+        # Here we trust capture_output=True which puts them in result.stdout and result.stderr
+        output_text = result.stdout
+        if result.stderr:
+            output_text += "\n[STDERR]\n" + result.stderr
+
+        # Display output
+        status_container.code(output_text)
         
-        if return_code == 0:
+        if result.returncode == 0:
             status_container.update(label=f"✅ {script_name} completed in {duration:.2f}s", state="complete", expanded=False)
         else:
-            status_container.update(label=f"❌ {script_name} failed (Exit Code: {return_code})", state="error", expanded=True)
+            status_container.update(label=f"❌ {script_name} failed (Exit Code: {result.returncode})", state="error", expanded=True)
             
     except Exception as e:
         status_container.error(f"💥 Execution Error: {str(e)}")
