@@ -279,7 +279,7 @@ def write_to_google_sheet_batch(data: List[Dict], spreadsheet_id: str, sheet_nam
         # Define column order
         fixed_columns = [
             # Basic Info
-            "phoneNumber", "cpId", "name", "emailAddress", "verified", "verifiedBy", "verificationDate_formatted",
+            "phoneNumber", "cpId", "name", "emailAddress", "verified", "verificationDate_formatted",
             # Business Info
             "businessName", "firmName", "firmSize", "businessCategory_flat", "reraId", "workAddress",
             # Status Fields
@@ -308,7 +308,9 @@ def write_to_google_sheet_batch(data: List[Dict], spreadsheet_id: str, sheet_nam
             # Timestamps
             "added_formatted", "lastModified_formatted",
             # Notes & Extra
-            "notes_flat", "extraDetails"
+            "notes_flat", "extraDetails",
+            # Verification Info
+            "verifiedBy"
         ]
         
         # Define data type fields for optimization
