@@ -110,6 +110,7 @@ def process_doc(doc_snapshot):
                     'connection': sanitize_str(entry.get("connection", "")),
                     'connectMedium': sanitize_str(entry.get("connectMedium", "")),
                     'direction': sanitize_str(entry.get("direction", "")),
+                    'connectBy': sanitize_str(entry.get("connectBy", "")),
                     'timestamp_raw': timestamp
                 }
                 rows.append(row)
@@ -155,7 +156,8 @@ def fetch_and_process_data():
             item['time'],
             item['connection'],
             item['connectMedium'],
-            item['direction']
+            item['direction'],
+            item['connectBy']
         ])
         
     return final_rows
@@ -195,7 +197,7 @@ def write_to_sheet(rows):
 
         headers = [
             "CP ID", "Agent Name", "KAM Name", "Date", "Time", 
-            "Connection Status", "Connect Medium", "Direction"
+            "Connection Status", "Connect Medium", "Direction", "Connect By"
         ]
         
         payload = [headers] + rows
