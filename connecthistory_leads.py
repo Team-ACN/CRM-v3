@@ -110,6 +110,7 @@ def process_doc(doc_snapshot):
                     'connection': sanitize_str(entry.get("connection", "")),
                     'connectMedium': sanitize_str(entry.get("connectMedium", "")),
                     'direction': sanitize_str(entry.get("direction", "")),
+                    'connectBy': sanitize_str(entry.get("connectBy", "")),
                     'timestamp_raw': timestamp # Used for sorting later
                 }
                 rows.append(row)
@@ -129,16 +130,15 @@ def fetch_and_process_data():
     
     # Materialize list to split into chunks for parallel processing if needed, 
     # but for simple processing, a direct iteration or thread pool map is fine.
-    # Since we need to iterate the stream, we collect them first.
-    docs = list(docs_stream)
-    total_docs = len(docs)
-    print(f"📄 Retrieved {total_docs} documents. Processing...")
+    # We use the stream directly with the executor to avoid loading all into memory.
+    total_docs = "Unknown (Streaming)" 
+    print(f"📄 Processing documents stream...")
 
     all_history_rows = []
     
     # Use ThreadPoolExecutor to process documents in parallel
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        results = executor.map(process_doc, docs)
+        results = executor.map(process_doc, docs_stream)
         
         for res in results:
             all_history_rows.extend(res)
@@ -163,7 +163,8 @@ def fetch_and_process_data():
             item['time'],
             item['connection'],
             item['connectMedium'],
-            item['direction']
+            item['direction'],
+            item['connectBy']
         ])
         
     return final_rows
@@ -203,7 +204,7 @@ def write_to_sheet(rows):
 
         headers = [
             "Lead ID", "Lead Name", "KAM Name", "Date", "Time", 
-            "Connection Status", "Connect Medium", "Direction"
+            "Connection Status", "Connect Medium", "Direction", "Connect By"
         ]
         
         payload = [headers] + rows
