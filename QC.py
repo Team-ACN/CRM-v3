@@ -263,6 +263,7 @@ def fetch_firestore_data(collection_name):
                 format_price(item.get("soldPrice", "")),  # Format sold price properly
                 convert_unix_to_date(item.get("soldDate", "")),  # Format sold date properly
                 extract_kam_info(item.get("soldPrice", "")),  # Extract KAM information
+                item.get("kamName", ""),
             ]
             rows.append(row)
         print(f"✅ Successfully fetched {len(rows)} records from Firestore.")
@@ -314,7 +315,7 @@ def write_to_google_sheet(data):
             "Age of Inventory","Age of Status","Status","Tenanted or Not",
             "OC Received or not","BDA Approved","BIAPPA Approved","Current Status","Coordinates",
             "Exclusive","Exact Floor","eKhata","Photos","Videos","Documents","Source","Builder Name",
-            "Sold Price (Lacs)","Sold Date","KAM Info"  # FIXED: Added the missing headers and KAM info
+            "Sold Price (Lacs)","Sold Date","KAM Info","KAM Name"  # FIXED: Added the missing headers and KAM info
         ]
         payload = [headers] + data
         # Sanitize
