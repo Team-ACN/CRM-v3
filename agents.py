@@ -358,9 +358,12 @@ def write_to_google_sheet_batch(data: List[Dict], spreadsheet_id: str, sheet_nam
         
         logger.info(f"📊 Writing {total_rows} rows to Google Sheets...")
         
-        # Clear sheet first
-        sheet.clear()
-        
+        # Determine current sheet size to decide on clearing strategy
+        try:
+            current_row_count = len(sheet.get_all_values())
+        except Exception:
+            current_row_count = 0
+            
         # Batch write data (Google Sheets handles large datasets efficiently with single update)
         if total_rows <= SHEETS_BATCH_SIZE:
             # Single batch write for normal datasets
@@ -391,6 +394,20 @@ def write_to_google_sheet_batch(data: List[Dict], spreadsheet_id: str, sheet_nam
                 end_time = time.time()
                 
                 logger.info(f"✅ Batch {i//SHEETS_BATCH_SIZE + 1} written ({len(batch_data)} rows) in {end_time - start_time:.2f} seconds")
+
+        # Clear remaining rows if new dataset is smaller than previous content
+        if current_row_count > total_rows:
+            logger.info(f"🧹 Clearing {current_row_count - total_rows} extra rows from previous data...")
+            # Calculate range to clear: from (total_rows + 1) to end
+            clear_range = f"A{total_rows + 1}:{chr(65 + len(fixed_columns) - 1)}{current_row_count}"
+            sheet.batch_clear([clear_range])
+            
+        # Ideally resize to exact row count to keep sheet clean
+        try:
+            sheet.resize(rows=total_rows)
+            logger.info(f"✅ Resized sheet to {total_rows} rows.")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not resize sheet (likely permission issue or not supported): {e}")
         
     except Exception as e:
         logger.error(f"❌ Error writing to Google Sheets: {e}")
