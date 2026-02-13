@@ -4,7 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import sys, codecs
 import time
@@ -59,16 +59,21 @@ def initialize_firebase():
 # ---------------------------
 # Helper Functions
 # ---------------------------
+# IST Offset (UTC + 5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
+
 def convert_unix_to_date(unix_timestamp):
     try:
         if not unix_timestamp: return ""
-        return datetime.fromtimestamp(int(unix_timestamp), tz=timezone.utc).strftime('%m/%d/%Y')
+        # Convert timestamp to IST
+        return datetime.fromtimestamp(int(unix_timestamp), tz=IST).strftime('%m/%d/%Y')
     except: return ""
 
 def convert_unix_to_time(unix_timestamp):
     try:
         if not unix_timestamp: return ""
-        return datetime.fromtimestamp(int(unix_timestamp), tz=timezone.utc).strftime('%H:%M:%S')
+        # Convert timestamp to IST
+        return datetime.fromtimestamp(int(unix_timestamp), tz=IST).strftime('%H:%M:%S')
     except: return ""
 
 def sanitize_str(value):
