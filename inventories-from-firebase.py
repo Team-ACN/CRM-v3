@@ -124,19 +124,30 @@ def sync_firestore_to_sheets():
     
     db = firestore.client()
     
-    # 2. Stream Data from Firestore (Memory Efficient)
-    logger.info("Fetching documents from Firestore...")
+    # 2. Batch Fetch Data from Firestore (Prevent Timeouts)
+    logger.info("Fetching documents from Firestore in batches...")
     collection_ref = db.collection("acnTestProperties")
     
     processed_data = []
     count = 0
+    batch_size = 1000
+    last_doc = None
     
-    # .stream() yields one document at a time, keeping RAM usage low
-    for doc in collection_ref.stream():
-        processed_data.append(process_single_doc(doc.to_dict()))
-        count += 1
-        if count % 1000 == 0:
-            logger.info(f"Processed {count} documents...")
+    while True:
+        query = collection_ref.order_by("__name__").limit(batch_size)
+        if last_doc:
+            query = query.start_after(last_doc)
+            
+        docs = list(query.stream())
+        if not docs:
+            break
+            
+        for doc in docs:
+            processed_data.append(process_single_doc(doc.to_dict()))
+            count += 1
+        
+        last_doc = docs[-1]
+        logger.info(f"Processed {count} documents...")
             
     logger.info(f"Finished processing {count} documents.")
 
