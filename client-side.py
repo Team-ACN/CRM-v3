@@ -1,15 +1,16 @@
 import streamlit as st
-import subprocess
 import os
 import time
 import sys
+import gc
+import runpy
+import io
+from contextlib import redirect_stdout, redirect_stderr
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Configuration
-PYTHON_EXECUTABLE = sys.executable
 PAGE_TITLE = "ACN Command Center"
 PAGE_ICON = "⚡"
 
@@ -25,7 +26,7 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 
 def run_script(script_name: str, status_container):
-    """Executes a python script and shows only final output."""
+    """Executes a python script in the current process to save memory."""
     path = os.path.join(os.getcwd(), script_name)
     
     if not os.path.exists(path):
@@ -43,43 +44,43 @@ def run_script(script_name: str, status_container):
 
     start_time = time.time()
     
+    # Capture standard output and error in memory without creating a new OS process
+    f_out = io.StringIO()
+    f_err = io.StringIO()
+    
     try:
-        # Prepare environment
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-        env["PYTHONIOENCODING"] = "utf-8"
-
-        status_container.write("⏳ Processing... Please wait.")
+        status_container.write("⏳ Processing in-memory... Please wait.")
         
-        # Run process and capture output
-        result = subprocess.run(
-            [PYTHON_EXECUTABLE, path],
-            capture_output=True,
-            text=True,
-            env=env
-        )
-        
+        # Redirect stdout/stderr and run the script within the SAME Python process
+        with redirect_stdout(f_out), redirect_stderr(f_err):
+            runpy.run_path(path, run_name="__main__")
+            
         duration = time.time() - start_time
-        # Combine stdout and stderr if needed, though usually captured together if desired. 
-        # Here we trust capture_output=True which puts them in result.stdout and result.stderr
-        output_text = result.stdout
-        if result.stderr:
-            output_text += "\n[STDERR]\n" + result.stderr
+        
+        output_text = f_out.getvalue()
+        err_text = f_err.getvalue()
+        
+        if err_text:
+            output_text += "\n[STDERR]\n" + err_text
 
         # Display output
-        status_container.code(output_text)
-        
-        if result.returncode == 0:
-            status_container.update(label=f"✅ {script_name} completed in {duration:.2f}s", state="complete", expanded=False)
+        if output_text.strip():
+            status_container.code(output_text)
         else:
-            status_container.update(label=f"❌ {script_name} failed (Exit Code: {result.returncode})", state="error", expanded=True)
+            status_container.write("Script executed successfully with no output log.")
+            
+        status_container.update(label=f"✅ {script_name} completed in {duration:.2f}s", state="complete", expanded=False)
             
     except Exception as e:
+        err_text = f_err.getvalue()
         status_container.error(f"💥 Execution Error: {str(e)}")
-
-# -----------------------------------------------------------------------------
-# UI Layout
-# -----------------------------------------------------------------------------
+        if err_text:
+            status_container.code(f"Error Log:\n{err_text}")
+    finally:
+        # Crucial for Free Tier: Force memory cleanup and close string buffers
+        f_out.close()
+        f_err.close()
+        gc.collect()
 
 # -----------------------------------------------------------------------------
 # UI Layout
@@ -159,4 +160,4 @@ with col3:
             run_script("connecthistory_leads.py", status)
 
 # Footer / Info
-st.caption(f"Environment: {os.getcwd()} | Python: {sys.version.split()[0]}")
+st.caption(f"Environment: Single-Process Setup | Python: {sys.version.split()[0]}")
