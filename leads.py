@@ -17,8 +17,9 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Ensure UTF-8 output (fixes UnicodeEncodeError on Windows)
-sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, 'strict')
+# Ensure UTF-8 output
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, 'strict')
 
 # Load environment variables from .env file
 load_dotenv()

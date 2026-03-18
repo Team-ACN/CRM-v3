@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 import sys, codecs
 
 # Ensure UTF-8 output
-sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, 'strict')
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, 'strict')
 
 # Load environment variables
 load_dotenv()

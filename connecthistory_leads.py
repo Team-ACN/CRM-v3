@@ -11,7 +11,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 # Ensure UTF-8 output
-sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, 'strict')
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, 'strict')
 
 # Load environment variables
 load_dotenv()

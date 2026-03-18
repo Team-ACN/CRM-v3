@@ -26,7 +26,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Ensure UTF-8 output
-sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, 'strict')
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, 'strict')
 os.environ['PYTHONUNBUFFERED'] = '1'
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
