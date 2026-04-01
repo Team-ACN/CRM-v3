@@ -34,6 +34,7 @@ GSPREAD_CLIENT_EMAIL      = os.getenv("GSPREAD_CLIENT_EMAIL")
 GSPREAD_CLIENT_ID         = os.getenv("GSPREAD_CLIENT_ID")
 GOOGLE_SHEET_ID           = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
 # Sheet name can be set via environment variable or modified directly here
+SHEETS_WRITE_BATCH_SIZE   = 500
 
 # ---------------------------
 # Firestore Collection Name & Sheet Name
@@ -201,20 +202,29 @@ def extract_kam_info(sold_data):
         return ""
 
 # ---------------------------
+# Safely read nested dictionaries
+# ---------------------------
+def safe_dict(value):
+    """Return a dict when value is dict, otherwise an empty dict."""
+    return value if isinstance(value, dict) else {}
+
+# ---------------------------
 # Fetch data from Firestore
 # ---------------------------
 def fetch_firestore_data(collection_name):
     try:
         db = firestore.client()
         print(f"🔍 Checking Firestore collection: {collection_name}")
-        docs = list(db.collection(collection_name).stream())
-        if not docs:
-            print("⚠️ No documents found in Firestore.")
-            return []
-        print(f"📄 Found {len(docs)} documents.")
+        docs = db.collection(collection_name).stream()
         rows = []
-        for doc in docs:
+        for index, doc in enumerate(docs, start=1):
             item = doc.to_dict() or {}
+            pricing = safe_dict(item.get("pricing"))
+            geoloc = safe_dict(item.get("_geoloc"))
+            media = safe_dict(item.get("media"))
+            media_photos = media.get("photos", [])
+            media_videos = media.get("videos", [])
+            media_documents = media.get("documents", [])
             row = [
                 item.get("propertyId", ""),
                 item.get("cpId", ""),  # Updated from cpCode
@@ -226,8 +236,8 @@ def fetch_firestore_data(collection_name):
                 item.get("carpet", ""),
                 item.get("sbua", ""),
                 item.get("facing", ""),
-                format_price(item.get("pricing", {}).get("totalAskPrice", "")),  
-                format_price(item.get("pricing", {}).get("pricePerSqft", "")), # Format price properly
+                format_price(pricing.get("totalAskPrice", "")),
+                format_price(pricing.get("pricePerSqft", "")), # Format price properly
                 item.get("noOfBedrooms", ""),
                 item.get("micromarket", ""),
                 item.get("communityType", ""),  # New field
@@ -251,14 +261,14 @@ def fetch_firestore_data(collection_name):
                 item.get("bdaApproved", ""),  # New field
                 item.get("biappaApproved", ""),  # New field
                 item.get("currentStatus", ""),
-                (f"{item.get('_geoloc', {}).get('lat','')}, {item.get('_geoloc', {}).get('lng','')}" if isinstance(item.get('_geoloc'), dict) else ""),
+                (f"{geoloc.get('lat','')}, {geoloc.get('lng','')}" if geoloc else ""),
                 item.get("exclusive", ""),  # Keeping from original script
                 item.get("exactFloor", ""),  # Keeping from original script
                 item.get("eKhata", ""),  # Keeping from original script
                 # Handle new nested media structure
-                ", ".join(item.get("media", {}).get("photos", [])) if isinstance(item.get("media", {}).get("photos"), list) else str(item.get("media", {}).get("photos", "")),
-                ", ".join(item.get("media", {}).get("videos", [])) if isinstance(item.get("media", {}).get("videos"), list) else str(item.get("media", {}).get("videos", "")),
-                ", ".join(item.get("media", {}).get("documents", [])) if isinstance(item.get("media", {}).get("documents"), list) else str(item.get("media", {}).get("documents", "")),
+                ", ".join(media_photos) if isinstance(media_photos, list) else str(media_photos or ""),
+                ", ".join(media_videos) if isinstance(media_videos, list) else str(media_videos or ""),
+                ", ".join(media_documents) if isinstance(media_documents, list) else str(media_documents or ""),
                 item.get("source", ""),  # Source field
                 item.get("builder_name", ""),  # Keeping from original script
                 format_price(item.get("soldPrice", "")),  # Format sold price properly
@@ -267,6 +277,12 @@ def fetch_firestore_data(collection_name):
                 item.get("kamName", ""),
             ]
             rows.append(row)
+            if index % 500 == 0:
+                print(f"⏳ Processed {index} documents...")
+        if not rows:
+            print("⚠️ No documents found in Firestore.")
+            return []
+        print(f"📄 Found {len(rows)} documents.")
         print(f"✅ Successfully fetched {len(rows)} records from Firestore.")
         return rows
     except Exception as e:
@@ -329,6 +345,18 @@ def write_to_google_sheet(data):
         # This preserves any additional content outside the data range
         num_rows = len(sanitized)
         num_cols = len(sanitized[0]) if sanitized else 0
+
+        # Ensure worksheet grid is large enough for incoming payload
+        current_rows = sheet.row_count
+        current_cols = sheet.col_count
+        required_rows = max(current_rows, num_rows)
+        required_cols = max(current_cols, num_cols)
+        if required_rows > current_rows or required_cols > current_cols:
+            print(
+                f"📐 Resizing sheet from {current_rows}x{current_cols} "
+                f"to {required_rows}x{required_cols}"
+            )
+            sheet.resize(rows=required_rows, cols=required_cols)
         
         # Handle column calculation for ranges beyond Z
         def get_column_letter(col_num):
@@ -341,10 +369,17 @@ def write_to_google_sheet(data):
             return result
         
         end_column = get_column_letter(num_cols)
-        data_range = f"A1:{end_column}{num_rows}"
-        
-        print(f"📝 Updating range {data_range} with {num_rows} rows and {num_cols} columns")
-        sheet.update(values=sanitized, range_name=data_range, value_input_option='USER_ENTERED')
+
+        print(f"📝 Preparing to write {num_rows} rows x {num_cols} columns in batches of {SHEETS_WRITE_BATCH_SIZE}")
+        for start in range(0, num_rows, SHEETS_WRITE_BATCH_SIZE):
+            end = min(start + SHEETS_WRITE_BATCH_SIZE, num_rows)
+            batch_values = sanitized[start:end]
+            start_row = start + 1
+            end_row = end
+            data_range = f"A{start_row}:{end_column}{end_row}"
+            print(f"📝 Writing rows {start_row}-{end_row}...")
+            sheet.update(values=batch_values, range_name=data_range, value_input_option='USER_ENTERED')
+
         print(f"✅ Data written successfully to sheet '{GOOGLE_SHEET_NAME}' (dates and prices parsed correctly).")
     except Exception as e:
         print(f"❌ Error writing to Google Sheets: {e}")
