@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 HEADERS = [
-    "Project ID","Project Name", "Latitude", "Longitude", "Asset Type", "Developer Name", "Micro Market",
-    "Promoter Name", "RERA Status", "Status","Handover Date", "QC Percentage"
+    "Project ID","Project Name", "Latitude", "Longitude", "Asset Type","Developer Category", "Developer Name", "Micro Market",
+    "Promoter Name", "RERA Status", "Status","Handover Date","No of Units", "QC Percentage","lastModified"
 ]
 
 def process_single_doc(item):
@@ -32,13 +32,16 @@ def process_single_doc(item):
         geoloc.get("lat", ""),
         geoloc.get("lng", ""),
         item.get("assetType", ""),
+        item.get("developerCategory", ""),
         item.get("developerName", ""),
         item.get("microMarket", ""),
         item.get("promoterName", ""),
         item.get("reraStatus", ""),
         item.get("status", ""),
         item.get("handoverDate", ""),
-        item.get("qcPercentage", "")
+        item.get("noOfUnits", ""),
+        item.get("qcPercentage", ""),
+        item.get("lastModified", "")
     ]
     
     # Sanitize Nones and NaNs
