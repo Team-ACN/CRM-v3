@@ -6,6 +6,7 @@ import os
 from dotenv import load_dotenv
 import logging
 import math
+import time
 
 # Configure basic logging
 logging.basicConfig(
@@ -76,7 +77,16 @@ def sync_truestate_to_sheets():
         if last_doc:
             query = query.start_after(last_doc)
             
-        docs = list(query.stream())
+        retries = 3
+        docs = []
+        for attempt in range(retries):
+            try:
+                docs = list(query.stream())
+                break
+            except Exception as e:
+                logger.warning(f"Error fetching batch (attempt {attempt+1}/{retries}): {e}")
+                time.sleep(2 ** attempt)
+                
         if not docs:
             break
             
@@ -114,7 +124,7 @@ def sync_truestate_to_sheets():
     # Clear the existing sheet completely
     service.spreadsheets().values().clear(
         spreadsheetId=spreadsheet_id,
-        range=f"'{sheet_name}'!A:J" 
+        range=f"'{sheet_name}'!A:O" 
     ).execute()
     
     # Update with new data
