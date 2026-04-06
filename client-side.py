@@ -173,7 +173,7 @@ st.divider()
 
 # --- Section 3: System ---
 st.subheader("⚙️ Data & System")
-col1, col2 ,col3= st.columns(3)
+col1, col2 ,col3,col4= st.columns(4)
 
 with col1:
     if st.button("📋 Sync Requirements", use_container_width=True):
@@ -189,6 +189,10 @@ with col3:
     if st.button("📞 Sync Leads Call History", use_container_width=True):
         with st.status("Running Call History Sync...", expanded=True) as status:
             run_script("connecthistory_leads.py", status)
+with col4:
+    if st.button("📞 Sync TrueState Apex", use_container_width=True):
+        with st.status("Running TrueState Apex Sync...", expanded=True) as status:
+            run_script("truestate-sync.py", status)
 
 # Footer / Info
 st.caption(f"Environment: Single-Process Setup | Python: {sys.version.split()[0]}")
