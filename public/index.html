@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ACN Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+      min-height: 100vh;
+      font-family: 'Inter', sans-serif;
+      color: #e2e8f0;
+      padding: 24px 16px 48px;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; }
+
+    .header {
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      border: 1px solid rgba(148,163,184,0.1);
+      border-radius: 14px;
+      padding: 28px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .header::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4, #10b981);
+    }
+    .header h1 { font-size: 28px; font-weight: 700; color: #fff; letter-spacing: -0.02em; margin-top: 6px; }
+    .header p  { color: #94a3b8; font-size: 14px; margin-top: 6px; }
+
+    .section {
+      background: rgba(30,41,59,0.6);
+      border: 1px solid rgba(148,163,184,0.1);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(10px);
+    }
+    .section h2 {
+      font-size: 16px; font-weight: 600; color: #fff;
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section h2::before {
+      content: '';
+      display: inline-block;
+      width: 4px; height: 20px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 2px;
+    }
+
+    .grid { display: grid; gap: 10px; }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+    @media (max-width: 640px) {
+      .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 400px) {
+      .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    }
+
+    button {
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      border: none;
+      color: #fff;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-weight: 600;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(59,130,246,0.25);
+    }
+    button:hover:not(:disabled) {
+      background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(59,130,246,0.35);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    button.running {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      box-shadow: 0 2px 8px rgba(245,158,11,0.3);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.75; }
+    }
+
+    .output-section {
+      background: rgba(15,23,42,0.8);
+      border: 1px solid rgba(148,163,184,0.12);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .output-section.visible { display: block; }
+    .output-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .output-header h2 {
+      font-size: 14px; font-weight: 600; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .output-label {
+      font-size: 12px; color: #64748b;
+      background: rgba(148,163,184,0.08);
+      padding: 3px 10px; border-radius: 20px;
+    }
+    pre {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(148,163,184,0.1);
+      border-radius: 8px;
+      padding: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 360px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+    pre.success { border-color: rgba(16,185,129,0.3); }
+    pre.error   { border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .footer {
+      text-align: center;
+      color: #475569;
+      font-size: 13px;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div style="font-size:32px">⚡</div>
+    <h1>ACN Command Center</h1>
+    <p>Enterprise Script Management Interface</p>
+  </div>
+
+  <!-- Leads & Growth -->
+  <div class="section">
+    <h2>🚀 Leads &amp; Growth</h2>
+    <div class="grid grid-3">
+      <button onclick="run('all-leads.py', this)">👥 Sync All Leads</button>
+      <button onclick="run('enquires.py', this)">❓ Sync Enquiries</button>
+      <button onclick="run('requirement_enquiries.py', this)">🎯 Sync Req. Enquiries</button>
+      <button onclick="run('leads.py', this)">🔐 Sync Tried Access</button>
+      <button onclick="run('agents.py', this)">🛡️ Sync Agents</button>
+    </div>
+  </div>
+
+  <!-- Inventory -->
+  <div class="section">
+    <h2>🏢 Inventory Management</h2>
+    <div class="grid grid-3">
+      <button onclick="run('inventories-from-firebase.py', this)">📦 Sync Inventories</button>
+      <button onclick="run('new-inventory.py', this)">🆕 Sync New Inventory</button>
+      <button onclick="run('QC.py', this)">🔍 Sync QC Properties</button>
+    </div>
+  </div>
+
+  <!-- Data & System -->
+  <div class="section">
+    <h2>⚙️ Data &amp; System</h2>
+    <div class="grid grid-4">
+      <button onclick="run('req.py', this)">📋 Sync Requirements</button>
+      <button onclick="run('connecthistory.py', this)">📞 Agents Call History</button>
+      <button onclick="run('connecthistory_leads.py', this)">📞 Leads Call History</button>
+      <button onclick="run('truestate-sync.py', this)">📞 Sync TrueState Apex</button>
+    </div>
+  </div>
+
+  <!-- Output -->
+  <div class="output-section" id="outputSection">
+    <div class="output-header">
+      <h2>📊 Output</h2>
+      <span class="output-label" id="outputLabel"></span>
+    </div>
+    <pre id="outputPre"></pre>
+  </div>
+
+  <div class="footer">⚡ ACN Command Center &nbsp;|&nbsp; Enterprise Script Management &nbsp;|&nbsp; 🔒 Secure Cloud</div>
+</div>
+
+<script>
+  let activeBtn = null;
+  let originalText = '';
+
+  function run(script, btn) {
+    if (activeBtn) return;
+
+    activeBtn = btn;
+    originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner"></span>Running…';
+    btn.classList.add('running');
+    btn.disabled = true;
+
+    const section = document.getElementById('outputSection');
+    const pre = document.getElementById('outputPre');
+    const label = document.getElementById('outputLabel');
+
+    section.classList.add('visible');
+    pre.className = '';
+    pre.textContent = '⏳ Executing ' + script + '…';
+    label.textContent = script;
+
+    fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        pre.textContent = data.output || '(no output)';
+        pre.className = data.success ? 'success' : 'error';
+      })
+      .catch(err => {
+        pre.textContent = 'Network error: ' + err.message;
+        pre.className = 'error';
+      })
+      .finally(() => {
+        btn.innerHTML = originalText;
+        btn.classList.remove('running');
+        btn.disabled = false;
+        activeBtn = null;
+        pre.scrollTop = pre.scrollHeight;
+      });
+  }
+</script>
+</body>
+</html>
