@@ -169,23 +169,33 @@ def sync_firestore_to_sheets():
     spreadsheet_id = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
     sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Inventories from firebase")
     
-    # 4. Write to Sheets
+    # 4. Write to Sheets in batches to avoid timeout
     logger.info("Writing to Google Sheets...")
-    values = [HEADERS] + processed_data
     
     # Clear the existing sheet completely
     service.spreadsheets().values().clear(
         spreadsheetId=spreadsheet_id,
-        range=f"'{sheet_name}'!A:AW" # AW accommodates the 47 columns
+        range=f"'{sheet_name}'!A:AW"  # AW accommodates the 47 columns
     ).execute()
     
-    # Update with new data
-    service.spreadsheets().values().update(
-        spreadsheetId=spreadsheet_id,
-        range=f"'{sheet_name}'!A1",
-        valueInputOption="USER_ENTERED",
-        body={"values": values}
-    ).execute()
+    # Write in batches of 5000 rows
+    WRITE_BATCH_SIZE = 5000
+    all_rows = [HEADERS] + processed_data
+    total_rows = len(all_rows)
+    
+    for start in range(0, total_rows, WRITE_BATCH_SIZE):
+        batch = all_rows[start:start + WRITE_BATCH_SIZE]
+        start_row = start + 1  # Sheets rows are 1-indexed
+        range_str = f"'{sheet_name}'!A{start_row}"
+        
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=range_str,
+            valueInputOption="USER_ENTERED",
+            body={"values": batch}
+        ).execute()
+        
+        logger.info(f"  Written rows {start + 1} to {min(start + WRITE_BATCH_SIZE, total_rows)} of {total_rows}")
     
     logger.info("✅ Sync completed successfully!")
 
