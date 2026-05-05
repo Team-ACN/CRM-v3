@@ -275,6 +275,7 @@ def fetch_firestore_data(collection_name):
                 convert_unix_to_date(item.get("soldDate", "")),  # Format sold date properly
                 extract_kam_info(item.get("soldPrice", "")),  # Extract KAM information
                 item.get("kamName", ""),
+                convert_unix_to_date(item.get("lastModified", ""))  # New field for last modified date,
             ]
             rows.append(row)
             if index % 500 == 0:
@@ -332,7 +333,7 @@ def write_to_google_sheet(data):
             "Age of Inventory","Age of Status","Status","Tenanted or Not",
             "OC Received or not","BDA Approved","BIAPPA Approved","Current Status","Coordinates",
             "Exclusive","Exact Floor","eKhata","Photos","Videos","Documents","Source","Builder Name",
-            "Sold Price (Lacs)","Sold Date","KAM Info","KAM Name"  # FIXED: Added the missing headers and KAM info
+            "Sold Price (Lacs)","Sold Date","KAM Info","KAM Name","Last Modified"  # FIXED: Added the missing headers and KAM info
         ]
         payload = [headers] + data
         # Sanitize
