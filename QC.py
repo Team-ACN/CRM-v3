@@ -1,9 +1,14 @@
+import argparse
 import os
 import math
+import time
+import gc
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from itertools import islice
 import firebase_admin
 from firebase_admin import credentials, firestore
-import gspread
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import sys, codecs
@@ -15,14 +20,20 @@ if hasattr(sys.stdout, 'buffer'):
 # Load environment variables from .env file
 load_dotenv()
 
+# DB toggle: --db new (default) | --db old
+_db_parser = argparse.ArgumentParser(add_help=False)
+_db_parser.add_argument('--db', choices=['new', 'old'], default='new')
+_db_args, _ = _db_parser.parse_known_args()
+_DB_PREFIX = "NEW_" if _db_args.db == 'new' else ""
+
 # ---------------------------
 # Firebase Configuration
 # ---------------------------
-FIREBASE_PROJECT_ID       = os.getenv("FIREBASE_PROJECT_ID")
-FIREBASE_PRIVATE_KEY_ID   = os.getenv("FIREBASE_PRIVATE_KEY_ID")
-FIREBASE_PRIVATE_KEY      = os.getenv("FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n')
-FIREBASE_CLIENT_EMAIL     = os.getenv("FIREBASE_CLIENT_EMAIL")
-FIREBASE_CLIENT_ID        = os.getenv("FIREBASE_CLIENT_ID")
+FIREBASE_PROJECT_ID       = os.getenv(f"{_DB_PREFIX}FIREBASE_PROJECT_ID")
+FIREBASE_PRIVATE_KEY_ID   = os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY_ID")
+FIREBASE_PRIVATE_KEY      = os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n')
+FIREBASE_CLIENT_EMAIL     = os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_EMAIL")
+FIREBASE_CLIENT_ID        = os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_ID")
 
 # ---------------------------
 # Google Sheets Configuration
@@ -35,6 +46,10 @@ GSPREAD_CLIENT_ID         = os.getenv("GSPREAD_CLIENT_ID")
 GOOGLE_SHEET_ID           = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
 # Sheet name can be set via environment variable or modified directly here
 SHEETS_WRITE_BATCH_SIZE   = 500
+FETCH_BATCH_SIZE          = 5000
+MAX_WORKERS               = min(32, (os.cpu_count() or 1) * 4)
+CHUNK_SIZE                = 500
+WRITE_BATCH_SIZE          = 50000
 
 # ---------------------------
 # Firestore Collection Name & Sheet Name
@@ -212,13 +227,48 @@ def safe_dict(value):
 # Fetch data from Firestore
 # ---------------------------
 def fetch_firestore_data(collection_name):
-    try:
-        db = firestore.client()
-        print(f"🔍 Checking Firestore collection: {collection_name}")
-        docs = db.collection(collection_name).stream()
+    """Fetch all docs via stream, convert to_dict in parallel."""
+    db = firestore.client(database_id="default")
+    collection_ref = db.collection(collection_name)
+    print(f"🚀 Streaming from: {collection_name} | workers: {MAX_WORKERS}")
+    t0 = time.time()
+    raw_docs = []
+    count = 0
+
+    doc_stream = collection_ref.stream()
+    while True:
+        batch = list(islice(doc_stream, FETCH_BATCH_SIZE))
+        if not batch:
+            break
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+            futures = [ex.submit(lambda d: d.to_dict(), doc) for doc in batch]
+            for f in as_completed(futures):
+                try:
+                    raw_docs.append(f.result())
+                    count += 1
+                    if count % 5000 == 0:
+                        print(f"  📦 Fetched {count} docs ({count/(time.time()-t0):.0f}/s)")
+                except Exception as e:
+                    print(f"Doc conversion error: {e}")
+        del batch
+
+    print(f"✅ Fetched {count} docs in {time.time()-t0:.2f}s")
+    return raw_docs
+
+
+# ---------------------------
+# Process documents into rows
+# ---------------------------
+def process_documents(raw_docs):
+    """Process docs into rows in parallel chunks."""
+    if not raw_docs:
+        return []
+
+    def process_chunk(chunk):
         rows = []
-        for index, doc in enumerate(docs, start=1):
-            item = doc.to_dict() or {}
+        for item in chunk:
+            if not item:
+                continue
             pricing = safe_dict(item.get("pricing"))
             geoloc = safe_dict(item.get("_geoloc"))
             media = safe_dict(item.get("media"))
@@ -227,9 +277,9 @@ def fetch_firestore_data(collection_name):
             media_documents = media.get("documents", [])
             row = [
                 item.get("propertyId", ""),
-                item.get("cpId", ""),  # Updated from cpCode
-                item.get("propertyName", ""),  # Updated from nameOfTheProperty
-                item.get("qcId", ""),  # New field
+                item.get("cpId", ""),
+                item.get("propertyName", ""),
+                item.get("qcId", ""),
                 item.get("assetType", ""),
                 item.get("subType", ""),
                 item.get("plotSize", ""),
@@ -237,18 +287,18 @@ def fetch_firestore_data(collection_name):
                 item.get("sbua", ""),
                 item.get("facing", ""),
                 format_price(pricing.get("totalAskPrice", "")),
-                format_price(pricing.get("pricePerSqft", "")), # Format price properly
+                format_price(pricing.get("pricePerSqft", "")),
                 item.get("noOfBedrooms", ""),
                 item.get("micromarket", ""),
-                item.get("communityType", ""),  # New field
+                item.get("communityType", ""),
                 item.get("extraDetails", ""),
                 item.get("floorNo", ""),
-                convert_unix_to_date(item.get("handoverDate")),  # Now treating as timestamp
+                convert_unix_to_date(item.get("handoverDate")),
                 item.get("area", ""),
                 item.get("mapLocation", ""),
                 convert_unix_to_date(item.get("added")),
                 convert_unix_to_date(item.get("dateOfLastChecked")),
-                convert_unix_to_datetime(item.get("lastCheck")),  # New timestamp field
+                convert_unix_to_datetime(item.get("lastCheck")),
                 item.get("driveLink", ""),
                 item.get("buildingKhata", ""),
                 item.get("landKhata", ""),
@@ -257,72 +307,52 @@ def fetch_firestore_data(collection_name):
                 item.get("ageOfStatus", ""),
                 item.get("status", ""),
                 item.get("tenanted", ""),
-                item.get("ocReceived", ""),  # Now boolean in schema
-                item.get("bdaApproved", ""),  # New field
-                item.get("biappaApproved", ""),  # New field
+                item.get("ocReceived", ""),
+                item.get("bdaApproved", ""),
+                item.get("biappaApproved", ""),
                 item.get("currentStatus", ""),
                 (f"{geoloc.get('lat','')}, {geoloc.get('lng','')}" if geoloc else ""),
-                item.get("exclusive", ""),  # Keeping from original script
-                item.get("exactFloor", ""),  # Keeping from original script
-                item.get("eKhata", ""),  # Keeping from original script
-                # Handle new nested media structure
+                item.get("exclusive", ""),
+                item.get("exactFloor", ""),
+                item.get("eKhata", ""),
                 ", ".join(media_photos) if isinstance(media_photos, list) else str(media_photos or ""),
                 ", ".join(media_videos) if isinstance(media_videos, list) else str(media_videos or ""),
                 ", ".join(media_documents) if isinstance(media_documents, list) else str(media_documents or ""),
-                item.get("source", ""),  # Source field
-                item.get("builder_name", ""),  # Keeping from original script
-                format_price(item.get("soldPrice", "")),  # Format sold price properly
-                convert_unix_to_date(item.get("soldDate", "")),  # Format sold date properly
-                extract_kam_info(item.get("soldPrice", "")),  # Extract KAM information
+                item.get("source", ""),
+                item.get("builder_name", ""),
+                format_price(item.get("soldPrice", "")),
+                convert_unix_to_date(item.get("soldDate", "")),
+                extract_kam_info(item.get("soldPrice", "")),
                 item.get("kamName", ""),
+                convert_unix_to_date(item.get("lastModified", "")),
             ]
-            rows.append(row)
-            if index % 500 == 0:
-                print(f"⏳ Processed {index} documents...")
-        if not rows:
-            print("⚠️ No documents found in Firestore.")
-            return []
-        print(f"📄 Found {len(rows)} documents.")
-        print(f"✅ Successfully fetched {len(rows)} records from Firestore.")
+            rows.append(["" if (isinstance(cell, float) and math.isnan(cell)) or cell is None else str(cell) for cell in row])
         return rows
-    except Exception as e:
-        print(f"❌ Error fetching data from Firestore: {e}")
-        return []
+
+    chunks = [raw_docs[i:i + CHUNK_SIZE] for i in range(0, len(raw_docs), CHUNK_SIZE)]
+    print(f"⚡ Processing {len(raw_docs)} docs in {len(chunks)} chunks | workers: {MAX_WORKERS}")
+    t0 = time.time()
+    rows = []
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        futures = [ex.submit(process_chunk, c) for c in chunks]
+        for f in as_completed(futures):
+            try:
+                rows.extend(f.result())
+            except Exception as e:
+                print(f"Chunk error: {e}")
+
+    print(f"✅ Processed {len(rows)} rows in {time.time()-t0:.2f}s")
+    return rows
 
 # ---------------------------
 # Write data to Google Sheets
 # ---------------------------
 def write_to_google_sheet(data):
+    if not data:
+        print("⚠️ No data to write.")
+        return
     try:
-        if not data:
-            print("⚠️ No data to write to Google Sheets.")
-            return
-        creds_data = {
-            "type": "service_account",
-            "project_id": GSPREAD_PROJECT_ID,
-            "private_key_id": GSPREAD_PRIVATE_KEY_ID,
-            "private_key": GSPREAD_PRIVATE_KEY,
-            "client_email": GSPREAD_CLIENT_EMAIL,
-            "client_id": GSPREAD_CLIENT_ID,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{GSPREAD_CLIENT_EMAIL.replace('@','%40')}"
-        }
-        scopes = ['https://www.googleapis.com/auth/spreadsheets']
-        creds = Credentials.from_service_account_info(creds_data, scopes=scopes)
-        gc = gspread.authorize(creds)
-        spreadsheet = gc.open_by_key(GOOGLE_SHEET_ID)
-        
-        # Try to get the specified sheet, create if it doesn't exist
-        try:
-            sheet = spreadsheet.worksheet(GOOGLE_SHEET_NAME)
-            print(f"📊 Using existing sheet: {GOOGLE_SHEET_NAME}")
-        except gspread.WorksheetNotFound:
-            sheet = spreadsheet.add_worksheet(title=GOOGLE_SHEET_NAME, rows="1000", cols="50")
-            print(f"📊 Created new sheet: {GOOGLE_SHEET_NAME}")
-        
-        # Updated Headers to match new schema - FIXED: Added missing Sold Price and Sold Date headers
         headers = [
             "Property ID","CP ID","Property Name","QC ID","Asset Type","Sub Type",
             "Plot Size","Carpet (Sq Ft)","SBUA (Sq ft)","Facing","Total Ask Price (Lacs)",
@@ -332,67 +362,78 @@ def write_to_google_sheet(data):
             "Age of Inventory","Age of Status","Status","Tenanted or Not",
             "OC Received or not","BDA Approved","BIAPPA Approved","Current Status","Coordinates",
             "Exclusive","Exact Floor","eKhata","Photos","Videos","Documents","Source","Builder Name",
-            "Sold Price (Lacs)","Sold Date","KAM Info","KAM Name"  # FIXED: Added the missing headers and KAM info
+            "Sold Price (Lacs)","Sold Date","KAM Info","KAM Name","Last Modified"
         ]
-        payload = [headers] + data
-        # Sanitize
-        sanitized = []
-        for row in payload:
-            new_row = ["" if (isinstance(cell, float) and math.isnan(cell)) or cell is None else str(cell) for cell in row]
-            sanitized.append(new_row)
-        
-        # Only update the data range without clearing the entire sheet
-        # This preserves any additional content outside the data range
-        num_rows = len(sanitized)
-        num_cols = len(sanitized[0]) if sanitized else 0
+        creds_data = {
+            "type": "service_account",
+            "project_id": GSPREAD_PROJECT_ID,
+            "private_key_id": GSPREAD_PRIVATE_KEY_ID,
+            "private_key": GSPREAD_PRIVATE_KEY,
+            "client_email": GSPREAD_CLIENT_EMAIL,
+            "client_id": GSPREAD_CLIENT_ID,
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+        creds = Credentials.from_service_account_info(
+            creds_data, scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+        quoted = f"'{GOOGLE_SHEET_NAME}'"
+        t0 = time.time()
 
-        # Ensure worksheet grid is large enough for incoming payload
-        current_rows = sheet.row_count
-        current_cols = sheet.col_count
-        required_rows = max(current_rows, num_rows)
-        required_cols = max(current_cols, num_cols)
-        if required_rows > current_rows or required_cols > current_cols:
-            print(
-                f"📐 Resizing sheet from {current_rows}x{current_cols} "
-                f"to {required_rows}x{required_cols}"
-            )
-            sheet.resize(rows=required_rows, cols=required_cols)
-        
-        # Handle column calculation for ranges beyond Z
-        def get_column_letter(col_num):
-            """Convert column number to Excel-style column letter (1=A, 26=Z, 27=AA, etc.)"""
-            result = ""
-            while col_num > 0:
-                col_num -= 1  # Adjust for 0-based indexing
-                result = chr(65 + (col_num % 26)) + result
-                col_num //= 26
-            return result
-        
-        end_column = get_column_letter(num_cols)
+        all_rows = [headers] + data
+        total = len(all_rows)
 
-        print(f"📝 Preparing to write {num_rows} rows x {num_cols} columns in batches of {SHEETS_WRITE_BATCH_SIZE}")
-        for start in range(0, num_rows, SHEETS_WRITE_BATCH_SIZE):
-            end = min(start + SHEETS_WRITE_BATCH_SIZE, num_rows)
-            batch_values = sanitized[start:end]
-            start_row = start + 1
-            end_row = end
-            data_range = f"A{start_row}:{end_column}{end_row}"
-            print(f"📝 Writing rows {start_row}-{end_row}...")
-            sheet.update(values=batch_values, range_name=data_range, value_input_option='USER_ENTERED')
+        print(f"🧹 Clearing sheet...")
+        service.spreadsheets().values().clear(
+            spreadsheetId=GOOGLE_SHEET_ID, range=f"{quoted}!A:AW", body={}
+        ).execute()
 
-        print(f"✅ Data written successfully to sheet '{GOOGLE_SHEET_NAME}' (dates and prices parsed correctly).")
+        print(f"📝 Writing {total} rows via batchUpdate...")
+        batch_data = []
+        for i in range(0, total, WRITE_BATCH_SIZE):
+            chunk = all_rows[i:i + WRITE_BATCH_SIZE]
+            start_row = i + 1
+            batch_data.append({
+                "range": f"{quoted}!A{start_row}:AW{start_row + len(chunk) - 1}",
+                "values": chunk,
+                "majorDimension": "ROWS"
+            })
+
+        service.spreadsheets().values().batchUpdate(
+            spreadsheetId=GOOGLE_SHEET_ID,
+            body={"valueInputOption": "USER_ENTERED", "data": batch_data, "includeValuesInResponse": False}
+        ).execute()
+
+        print(f"✅ Written {total} rows in {time.time()-t0:.2f}s")
     except Exception as e:
         print(f"❌ Error writing to Google Sheets: {e}")
 
 # Main
 def main():
-    print(f"🚀 Starting sync from Firestore collection '{FIRESTORE_COLLECTION_NAME}' to Google Sheet '{GOOGLE_SHEET_NAME}'")
+    start = time.time()
+    print("="*60)
+    print("⚡ ULTRA-FAST FIRESTORE TO SHEETS SYNC (QC Inventories)")
+    print(f"🔧 {MAX_WORKERS} workers | fetch batch: {FETCH_BATCH_SIZE} | chunk: {CHUNK_SIZE}")
+    print(f"🔑 DB: {'NEW' if _DB_PREFIX else 'OLD'} | Collection: {FIRESTORE_COLLECTION_NAME}")
+    print("="*60)
+
     initialize_firebase()
-    data = fetch_firestore_data(FIRESTORE_COLLECTION_NAME)
-    if data:
-        write_to_google_sheet(data)
-    else:
-        print("⚠️ No data to write to Google Sheets.")
+
+    print(f"\n📥 PHASE 1: Fetching data from '{FIRESTORE_COLLECTION_NAME}'")
+    raw_docs = fetch_firestore_data(FIRESTORE_COLLECTION_NAME)
+    if not raw_docs:
+        print("⚠️ No documents found.")
+        return
+
+    print(f"\n⚙️  PHASE 2: Processing {len(raw_docs)} documents")
+    rows = process_documents(raw_docs)
+    del raw_docs
+    gc.collect()
+
+    print(f"\n📤 PHASE 3: Writing to Sheets '{GOOGLE_SHEET_NAME}'")
+    write_to_google_sheet(rows)
+
+    print(f"\n🎉 Total time: {time.time()-start:.2f}s | {len(rows)} records")
 
 if __name__ == "__main__":
     main()

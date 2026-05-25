@@ -1,3 +1,4 @@
+import argparse
 import os
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -13,14 +14,20 @@ if hasattr(sys.stdout, 'buffer'):
 # Load environment variables from .env file
 load_dotenv()
 
+# DB toggle: --db new (default) | --db old
+_db_parser = argparse.ArgumentParser(add_help=False)
+_db_parser.add_argument('--db', choices=['new', 'old'], default='new')
+_db_args, _ = _db_parser.parse_known_args()
+_DB_PREFIX = "NEW_" if _db_args.db == 'new' else ""
+
 # ---------------------------
 # Firebase Configuration
 # ---------------------------
-FIREBASE_PROJECT_ID       = os.getenv("FIREBASE_PROJECT_ID")
-FIREBASE_PRIVATE_KEY_ID   = os.getenv("FIREBASE_PRIVATE_KEY_ID")
-FIREBASE_PRIVATE_KEY      = os.getenv("FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n')
-FIREBASE_CLIENT_EMAIL     = os.getenv("FIREBASE_CLIENT_EMAIL")
-FIREBASE_CLIENT_ID        = os.getenv("FIREBASE_CLIENT_ID")
+FIREBASE_PROJECT_ID       = os.getenv(f"{_DB_PREFIX}FIREBASE_PROJECT_ID")
+FIREBASE_PRIVATE_KEY_ID   = os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY_ID")
+FIREBASE_PRIVATE_KEY      = os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n')
+FIREBASE_CLIENT_EMAIL     = os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_EMAIL")
+FIREBASE_CLIENT_ID        = os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_ID")
 
 # ---------------------------
 # Firestore Collection Name
@@ -86,7 +93,7 @@ def read_from_csv(filename):
 # ---------------------------
 def fetch_all_documents(collection_name):
     try:
-        db = firestore.client()
+        db = firestore.client(database_id="default")
         print(f"🔍 Fetching all documents from Firestore collection: {collection_name}...")
         
         docs = list(db.collection(collection_name).stream())
@@ -114,7 +121,7 @@ def upload_to_firestore(data, collection_name, property_map):
             print("⚠️ No data to upload.")
             return
         
-        db = firestore.client()
+        db = firestore.client(database_id="default")
         
         success_count = 0
         error_count = 0

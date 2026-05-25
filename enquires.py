@@ -1,3 +1,4 @@
+import argparse
 import firebase_admin
 from firebase_admin import credentials, firestore
 from googleapiclient.discovery import build
@@ -33,6 +34,12 @@ os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 # Load environment variables
 load_dotenv()
+
+# DB toggle: --db new (default) | --db old
+_db_parser = argparse.ArgumentParser(add_help=False)
+_db_parser.add_argument('--db', choices=['new', 'old'], default='new')
+_db_args, _ = _db_parser.parse_known_args()
+_DB_PREFIX = "NEW_" if _db_args.db == 'new' else ""
 
 # Optimized Configuration
 BATCH_SIZE = 5000  # Increased batch size for faster processing
@@ -158,11 +165,11 @@ def get_firebase_credentials() -> Dict:
     """Get Firebase credentials with caching"""
     return {
         "type": "service_account",
-        "project_id": os.getenv("FIREBASE_PROJECT_ID"),
-        "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID"),
-        "private_key": os.getenv("FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n"),
-        "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
-        "client_id": os.getenv("FIREBASE_CLIENT_ID"),
+        "project_id": os.getenv(f"{_DB_PREFIX}FIREBASE_PROJECT_ID"),
+        "private_key_id": os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY_ID"),
+        "private_key": os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n"),
+        "client_email": os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_EMAIL"),
+        "client_id": os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_ID"),
         "token_uri": "https://oauth2.googleapis.com/token"
     }
 
@@ -191,7 +198,7 @@ def initialize_firebase() -> firestore.Client:
             logger.info("✅ Firebase initialized")
         
         if _firebase_db is None:
-            _firebase_db = firestore.client()
+            _firebase_db = firestore.client(database_id="default")
         
         return _firebase_db
 

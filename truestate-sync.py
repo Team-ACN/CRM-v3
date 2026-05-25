@@ -1,3 +1,4 @@
+import argparse
 import firebase_admin
 from firebase_admin import credentials, firestore
 from googleapiclient.discovery import build
@@ -17,6 +18,12 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
+
+# DB toggle: --db new (default) | --db old
+_db_parser = argparse.ArgumentParser(add_help=False)
+_db_parser.add_argument('--db', choices=['new', 'old'], default='new')
+_db_args, _ = _db_parser.parse_known_args()
+_DB_PREFIX = "NEW_" if _db_args.db == 'new' else ""
 
 HEADERS = [
     "Project ID","Project Name", "Latitude", "Longitude", "Asset Type","Developer Category", "Developer Name", "Micro Market",
@@ -52,16 +59,16 @@ def sync_truestate_to_sheets():
     # 1. Initialize Firebase
     creds_dict = {
         "type": "service_account",
-        "project_id": os.getenv("FIREBASE_PROJECT_ID"),
-        "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID"),
-        "private_key": os.getenv("FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n"),
-        "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
+        "project_id": os.getenv(f"{_DB_PREFIX}FIREBASE_PROJECT_ID"),
+        "private_key_id": os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY_ID"),
+        "private_key": os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n"),
+        "client_email": os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_EMAIL"),
         "token_uri": "https://oauth2.googleapis.com/token"
     }
     if not firebase_admin._apps:
         firebase_admin.initialize_app(credentials.Certificate(creds_dict))
     
-    db = firestore.client()
+    db = firestore.client(database_id="default")
     
     # 2. Batch Fetch Data from Firestore (Prevent Timeouts)
     logger.info("Fetching documents from Firestore in batches...")

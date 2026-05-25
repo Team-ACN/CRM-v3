@@ -1,3 +1,4 @@
+import argparse
 import os
 import math
 import firebase_admin
@@ -15,14 +16,20 @@ if hasattr(sys.stdout, 'buffer'):
 # Load environment variables
 load_dotenv()
 
+# DB toggle: --db new (default) | --db old
+_db_parser = argparse.ArgumentParser(add_help=False)
+_db_parser.add_argument('--db', choices=['new', 'old'], default='new')
+_db_args, _ = _db_parser.parse_known_args()
+_DB_PREFIX = "NEW_" if _db_args.db == 'new' else ""
+
 # ---------------------------
 # Firebase Configuration
 # ---------------------------
-FIREBASE_PROJECT_ID       = os.getenv("FIREBASE_PROJECT_ID")
-FIREBASE_PRIVATE_KEY_ID   = os.getenv("FIREBASE_PRIVATE_KEY_ID")
-FIREBASE_PRIVATE_KEY      = os.getenv("FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n')
-FIREBASE_CLIENT_EMAIL     = os.getenv("FIREBASE_CLIENT_EMAIL")
-FIREBASE_CLIENT_ID        = os.getenv("FIREBASE_CLIENT_ID")
+FIREBASE_PROJECT_ID       = os.getenv(f"{_DB_PREFIX}FIREBASE_PROJECT_ID")
+FIREBASE_PRIVATE_KEY_ID   = os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY_ID")
+FIREBASE_PRIVATE_KEY      = os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n')
+FIREBASE_CLIENT_EMAIL     = os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_EMAIL")
+FIREBASE_CLIENT_ID        = os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_ID")
 
 # ---------------------------
 # Google Sheets Configuration
@@ -95,7 +102,7 @@ def process_array_field(array_field):
 # ---------------------------
 def fetch_requirements_data(collection_name):
     try:
-        db = firestore.client()
+        db = firestore.client(database_id="default")
         print(f"🔍 Fetching Firestore collection: {collection_name}")
         docs = list(db.collection(collection_name).stream())
         if not docs:
