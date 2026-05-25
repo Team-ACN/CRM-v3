@@ -1,6 +1,11 @@
+import argparse
 import os
 import math
 import logging
+import time
+import gc
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from itertools import islice
 import firebase_admin
 from firebase_admin import credentials, firestore
 from googleapiclient.discovery import build
@@ -16,6 +21,12 @@ if hasattr(sys.stdout, 'buffer'):
 # Load environment variables from .env file
 load_dotenv()
 
+# DB toggle: --db new (default) | --db old
+_db_parser = argparse.ArgumentParser(add_help=False)
+_db_parser.add_argument('--db', choices=['new', 'old'], default='new')
+_db_args, _ = _db_parser.parse_known_args()
+_DB_PREFIX = "NEW_" if _db_args.db == 'new' else ""
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -25,10 +36,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------
 # Firebase Configuration
 # ---------------------------
-FIREBASE_PROJECT_ID       = os.getenv("FIREBASE_PROJECT_ID")
-FIREBASE_PRIVATE_KEY_ID   = os.getenv("FIREBASE_PRIVATE_KEY_ID")
-FIREBASE_PRIVATE_KEY      = os.getenv("FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n')
-FIREBASE_CLIENT_EMAIL     = os.getenv("FIREBASE_CLIENT_EMAIL")
+FIREBASE_PROJECT_ID       = os.getenv(f"{_DB_PREFIX}FIREBASE_PROJECT_ID")
+FIREBASE_PRIVATE_KEY_ID   = os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY_ID")
+FIREBASE_PRIVATE_KEY      = os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n')
+FIREBASE_CLIENT_EMAIL     = os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_EMAIL")
 
 # ---------------------------
 # Google Sheets Configuration
@@ -37,13 +48,16 @@ GSPREAD_PROJECT_ID        = os.getenv("GSPREAD_PROJECT_ID")
 GSPREAD_PRIVATE_KEY       = os.getenv("GSPREAD_PRIVATE_KEY", "").replace('\\n', '\n')
 GSPREAD_CLIENT_EMAIL      = os.getenv("GSPREAD_CLIENT_EMAIL")
 GOOGLE_SHEET_ID           = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
-# Match inventories-from-firebase.py Firestore pagination
-FIRESTORE_BATCH_SIZE      = 1000
+
+FETCH_BATCH_SIZE = 5000
+MAX_WORKERS      = min(32, (os.cpu_count() or 1) * 4)
+CHUNK_SIZE       = 500
+WRITE_BATCH_SIZE = 50000
 
 # ---------------------------
 # Firestore Collection Name & Sheet Name
 # ---------------------------
-FIRESTORE_COLLECTION_NAME = "acnTestProperties"
+FIRESTORE_COLLECTION_NAME = "Properties" if _db_args.db == 'new' else "acnTestProperties"
 GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "Inventories new")
 
 # ---------------------------
@@ -378,38 +392,191 @@ def build_row(item: dict):
     return [row_map.get(key, "") for key in UNIFIED_HEADERS]
 
 
+def build_row_new(item: dict):
+    """Flatten a new-schema Properties doc into the unified header order."""
+    geoloc = safe_dict(item.get("_geoloc"))
+    # media is now an array of {type, url, ...} maps
+    media_list = item.get("media", []) or []
+    if not isinstance(media_list, list):
+        media_list = []
+    photos = ", ".join([m.get("url") or "" for m in media_list if isinstance(m, dict) and m.get("type") == "image"])
+    videos = ", ".join([m.get("url") or "" for m in media_list if isinstance(m, dict) and m.get("type") == "video"])
+    docs_list = item.get("documents", []) or []
+    documents = ", ".join([str(d) for d in docs_list if d]) if isinstance(docs_list, list) else ""
+
+    # pricing is now top-level
+    total_ask = format_price(item.get("totalAskPrice", ""))
+    price_sqft = format_price(item.get("pricePerSqft", ""))
+
+    # legalInfo, features, rentalInfo may not exist — fall back to top-level fields
+    legal = safe_dict(item.get("legalInfo"))
+    rental = safe_dict(item.get("rentalInfo"))
+    tenant = safe_dict(item.get("tenantPreferences"))
+
+    row_map = {
+        "propertyId":               item.get("propertyId", item.get("id", item.get("objectId", ""))),
+        "listingType":              item.get("listingType", ""),
+        "propertyType":             item.get("propertyType", ""),
+        "assetType":                item.get("assetType", ""),
+        "propertyCategory":         item.get("propertyCategory", ""),
+        "commercialPropertyType":   item.get("commercialPropertyType", ""),
+        "commercialSubType":        item.get("commercialSubType", item.get("apartmentSubType", "")),
+        "cpId":                     item.get("cpId", ""),
+        "agentName":                item.get("agentName", ""),
+        "agentPhoneNumber":         item.get("agentPhoneNumber", ""),
+        "kamId":                    item.get("kamId", ""),
+        "kamName":                  item.get("kamName", ""),
+        "propertyName":             item.get("propertyName", ""),
+        "micromarket":              item.get("micromarket", ""),
+        "area":                     item.get("area", ""),
+        "zone":                     item.get("zone", ""),
+        "communityType":            item.get("societyType", item.get("communityType", "")),
+        "lat":                      geoloc.get("lat", ""),
+        "lng":                      geoloc.get("lng", ""),
+        "mapLocation":              item.get("location", item.get("mapLocation", "")),
+        "driveLink":                item.get("driveLink", ""),
+        "sbua":                     item.get("sbua", ""),
+        "carpetArea":               item.get("carpet", item.get("carpetArea", "")),
+        "plotArea":                 item.get("plotArea", ""),
+        "facing":                   item.get("facing", ""),
+        "apartmentType":            item.get("apartmentSubType", item.get("apartmentType", "")),
+        "structure":                item.get("structure", ""),
+        "noOfBedrooms":             item.get("bedroom", item.get("noOfBedrooms", "")),
+        "extraRooms":               item.get("extraRooms", ""),
+        "noOfBathrooms":            item.get("bathroom", item.get("noOfBathrooms", "")),
+        "noOfBalconies":            item.get("noOfBalconies", ""),
+        "balconyFacing":            item.get("balconyFacing", ""),
+        "floorNumber":              item.get("floorNumber", item.get("floorNo", "")),
+        "referredFloorNumber":      item.get("referredFloorNumber", ""),
+        "totalFloors":              item.get("totalFloors", ""),
+        "noOfSeats":                item.get("noOfSeats", ""),
+        "totalRooms":               item.get("totalRooms", ""),
+        "waterSupply":              item.get("waterSupply", ""),
+        "typeOfWaterSupply":        item.get("typeOfWaterSupply", ""),
+        "plotNo":                   item.get("plotNo", ""),
+        "plotLength":               item.get("plotLength", ""),
+        "plotBreadth":              item.get("plotBreadth", ""),
+        "oddSized":                 item.get("oddSized", ""),
+        "furnishing":               item.get("furnishing", ""),
+        "ageOfTheBuilding":         item.get("ageOfBuilding", item.get("ageOfTheBuilding", "")),
+        "possession":               item.get("possession", ""),
+        "availableFrom":            convert_unix_to_date(item.get("availableFrom")),
+        "readyToMove":              item.get("readyToMove", ""),
+        "handOverDate":             convert_unix_to_date(item.get("handOverDate", item.get("handoverDate"))),
+        "totalAskPrice":            total_ask,
+        "pricePerSqft":             price_sqft,
+        "rent":                     format_price(rental.get("rent", "")),
+        "deposit":                  format_price(rental.get("deposit", "")),
+        "maintenance":              rental.get("maintenance", ""),
+        "maintenanceAmount":        format_price(rental.get("maintenanceAmount", "")),
+        "commissionType":           rental.get("commissionType", ""),
+        "rentalIncome":             format_price(rental.get("rentalIncome", "")),
+        "currentDeposit":           format_price(rental.get("currentDeposit", "")),
+        "startDate":                convert_unix_to_date(rental.get("startDate")),
+        "endDate":                  convert_unix_to_date(rental.get("endDate")),
+        "preferredTenants":         format_list(tenant.get("preferredTenants")),
+        "petsAllowed":              tenant.get("petsAllowed", ""),
+        "nonVegAllowed":            tenant.get("nonVegAllowed", ""),
+        "cornerUnit":               str(item.get("isCornerUnit", item.get("cornerUnit", ""))),
+        "exclusive":                str(item.get("isExclusive", item.get("exclusive", ""))),
+        "ocReceived":               str(item.get("ocReceived", "")),
+        "landKhata":                item.get("landKhata", legal.get("landKhata", "")),
+        "buildingKhata":            item.get("buildingKhata", legal.get("buildingKhata", "")),
+        "eKhata":                   str(item.get("hasEKhata", item.get("eKhata", legal.get("eKhata", "")))),
+        "biappaApproved":           str(item.get("isBiapaApproved", item.get("biappaApproved", legal.get("biappaApproved", "")))),
+        "bdaApproved":              str(item.get("isBdaApproved", item.get("bdaApproved", legal.get("bdaApproved", "")))),
+        "amenities":                format_list(item.get("amenities")),
+        "parking":                  item.get("parking", ""),
+        "uds":                      item.get("uds", ""),
+        "suitableFor":              item.get("suitableFor", ""),
+        "photos":                   photos,
+        "videos":                   videos,
+        "documents":                documents,
+        "extraDetails":             item.get("extraDetails", ""),
+        "unitNumber":               item.get("unitNumber", ""),
+        "status":                   item.get("status", ""),
+        "kamStatus":                item.get("kamStatus", ""),
+        "dataStatus":               item.get("dataStatus", item.get("currentStatus", "")),
+        "stage":                    item.get("stage", ""),
+        "added":                    convert_unix_to_datetime(item.get("added")),
+        "dateOfLastChecked":        convert_unix_to_datetime(item.get("dateOfLastChecked")),
+        "lastModified":             convert_unix_to_datetime(item.get("lastModified")),
+        "ageOfInventory":           item.get("ageOfInventory", ""),
+        "ageOfStatus":              item.get("ageOfStatus", ""),
+        "source":                   item.get("source", ""),
+    }
+    return [row_map.get(key, "") for key in UNIFIED_HEADERS]
+
+
 # ---------------------------
 # Fetch data from Firestore (batched pagination, same as inventories-from-firebase.py)
 # ---------------------------
 def fetch_firestore_data(collection_name):
-    try:
-        db = firestore.client()
-        logger.info("Fetching documents from Firestore in batches...")
-        collection_ref = db.collection(collection_name)
-        rows = []
-        count = 0
-        last_doc = None
-        while True:
-            query = collection_ref.order_by("__name__").limit(FIRESTORE_BATCH_SIZE)
-            if last_doc:
-                query = query.start_after(last_doc)
-            docs = list(query.stream())
-            if not docs:
-                break
-            for doc in docs:
-                item = doc.to_dict() or {}
-                rows.append(build_row(item))
-                count += 1
-            last_doc = docs[-1]
-            logger.info("Processed %s documents...", count)
-        if not rows:
-            logger.info("No documents found in Firestore.")
-            return []
-        logger.info("Finished processing %s documents.", count)
-        return rows
-    except Exception as e:
-        logger.error("Error fetching data from Firestore: %s", e, exc_info=True)
+    """Fetch all docs via stream, convert to_dict in parallel."""
+    db = firestore.client(database_id="default")
+    collection_ref = db.collection(collection_name)
+    logger.info(f"🚀 Streaming from: {collection_name} | workers: {MAX_WORKERS}")
+    t0 = time.time()
+    raw_docs = []
+    count = 0
+
+    doc_stream = collection_ref.stream()
+    while True:
+        batch = list(islice(doc_stream, FETCH_BATCH_SIZE))
+        if not batch:
+            break
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+            futures = [ex.submit(lambda d: d.to_dict(), doc) for doc in batch]
+            for f in as_completed(futures):
+                try:
+                    raw_docs.append(f.result())
+                    count += 1
+                    if count % 5000 == 0:
+                        logger.info(f"  📦 Fetched {count} docs ({count/(time.time()-t0):.0f}/s)")
+                except Exception as e:
+                    logger.error(f"Doc conversion error: {e}")
+        del batch
+
+    logger.info(f"✅ Fetched {count} docs in {time.time()-t0:.2f}s")
+    return raw_docs
+
+
+def process_documents(raw_docs):
+    """Process docs into rows in parallel chunks."""
+    if not raw_docs:
         return []
+    row_builder = build_row_new if _db_args.db == 'new' else build_row
+
+    def process_chunk(chunk):
+        rows = []
+        for item in chunk:
+            if not item:
+                continue
+            try:
+                row = row_builder(item)
+                rows.append([
+                    "" if (isinstance(cell, float) and math.isnan(cell)) or cell is None
+                    else str(cell) for cell in row
+                ])
+            except Exception as e:
+                logger.error(f"Row build error: {e}")
+        return rows
+
+    chunks = [raw_docs[i:i + CHUNK_SIZE] for i in range(0, len(raw_docs), CHUNK_SIZE)]
+    logger.info(f"⚡ Processing {len(raw_docs)} docs in {len(chunks)} chunks | workers: {MAX_WORKERS}")
+    t0 = time.time()
+    rows = []
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        futures = [ex.submit(process_chunk, c) for c in chunks]
+        for f in as_completed(futures):
+            try:
+                rows.extend(f.result())
+            except Exception as e:
+                logger.error(f"Chunk error: {e}")
+
+    logger.info(f"✅ Processed {len(rows)} rows in {time.time()-t0:.2f}s")
+    return rows
 
 
 # ---------------------------
@@ -417,7 +584,7 @@ def fetch_firestore_data(collection_name):
 # ---------------------------
 def write_to_google_sheet(data):
     if not data:
-        logger.info("No data to write to Google Sheets.")
+        logger.info("No data to write.")
         return
     try:
         sheets_creds_dict = {
@@ -428,58 +595,70 @@ def write_to_google_sheet(data):
             "token_uri": "https://oauth2.googleapis.com/token",
         }
         creds = Credentials.from_service_account_info(
-            sheets_creds_dict,
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
+            sheets_creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
         service = build("sheets", "v4", credentials=creds, cache_discovery=False)
 
-        headers = UNIFIED_HEADERS
-        payload = [headers] + data
-        sanitized = []
-        for row in payload:
-            new_row = [
-                ""
-                if (isinstance(cell, float) and math.isnan(cell)) or cell is None
-                else str(cell)
-                for cell in row
-            ]
-            sanitized.append(new_row)
-
         num_cols = len(UNIFIED_HEADERS)
         end_col = column_index_to_letter(num_cols)
-        clear_range = sheet_a1_range(GOOGLE_SHEET_NAME, f"A:{end_col}")
-        update_range = sheet_a1_range(GOOGLE_SHEET_NAME, "A1")
+        quoted = f"'{GOOGLE_SHEET_NAME}'"
+        t0 = time.time()
 
-        logger.info("Writing to Google Sheets...")
+        all_rows = [UNIFIED_HEADERS] + data
+        total = len(all_rows)
+
+        logger.info("🧹 Clearing sheet...")
         service.spreadsheets().values().clear(
             spreadsheetId=GOOGLE_SHEET_ID,
-            range=clear_range,
+            range=sheet_a1_range(GOOGLE_SHEET_NAME, f"A:{end_col}"),
+            body={}
         ).execute()
-        service.spreadsheets().values().update(
-            spreadsheetId=GOOGLE_SHEET_ID,
-            range=update_range,
-            valueInputOption="USER_ENTERED",
-            body={"values": sanitized},
-        ).execute()
-        logger.info("Sync completed successfully for sheet '%s'.", GOOGLE_SHEET_NAME)
-    except Exception as e:
-        logger.error("Error writing to Google Sheets: %s", e, exc_info=True)
 
-# Main
-def main():
-    print(
-        f"🚀 Starting sync from Firestore collection '{FIRESTORE_COLLECTION_NAME}' "
-        f"to Google Sheet '{GOOGLE_SHEET_NAME}'"
-    )
-    try:
-        initialize_firebase()
-        data = fetch_firestore_data(FIRESTORE_COLLECTION_NAME)
-        if data:
-            write_to_google_sheet(data)
-        else:
-            logger.info("No data to sync.")
+        logger.info(f"📝 Writing {total} rows via batchUpdate...")
+        batch_data = []
+        for i in range(0, total, WRITE_BATCH_SIZE):
+            chunk = all_rows[i:i + WRITE_BATCH_SIZE]
+            start_row = i + 1
+            batch_data.append({
+                "range": f"{quoted}!A{start_row}:{end_col}{start_row + len(chunk) - 1}",
+                "values": chunk,
+                "majorDimension": "ROWS"
+            })
+
+        service.spreadsheets().values().batchUpdate(
+            spreadsheetId=GOOGLE_SHEET_ID,
+            body={"valueInputOption": "USER_ENTERED", "data": batch_data, "includeValuesInResponse": False}
+        ).execute()
+
+        logger.info(f"✅ Written {total} rows in {time.time()-t0:.2f}s")
     except Exception as e:
-        logger.error("Error during sync: %s", e, exc_info=True)
+        logger.error(f"Error writing to Google Sheets: {e}", exc_info=True)
+
+def main():
+    start = time.time()
+    logger.info("="*60)
+    logger.info("⚡ ULTRA-FAST FIRESTORE TO SHEETS SYNC (New Inventory)")
+    logger.info(f"🔧 {MAX_WORKERS} workers | fetch batch: {FETCH_BATCH_SIZE} | chunk: {CHUNK_SIZE}")
+    logger.info(f"🔑 DB: {'NEW' if _DB_PREFIX else 'OLD'} | Collection: {FIRESTORE_COLLECTION_NAME}")
+    logger.info("="*60)
+
+    initialize_firebase()
+
+    logger.info(f"\n📥 PHASE 1: Fetching data from '{FIRESTORE_COLLECTION_NAME}'")
+    raw_docs = fetch_firestore_data(FIRESTORE_COLLECTION_NAME)
+    if not raw_docs:
+        logger.warning("No documents found.")
+        return
+
+    logger.info(f"\n⚙️  PHASE 2: Processing {len(raw_docs)} documents")
+    rows = process_documents(raw_docs)
+    del raw_docs
+    gc.collect()
+
+    logger.info(f"\n📤 PHASE 3: Writing to Sheets '{GOOGLE_SHEET_NAME}'")
+    write_to_google_sheet(rows)
+
+    logger.info(f"\n🎉 Total time: {time.time()-start:.2f}s | {len(rows)} records")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import argparse
 import firebase_admin
 from firebase_admin import credentials, firestore
 from googleapiclient.discovery import build
@@ -7,6 +8,10 @@ import os
 from dotenv import load_dotenv
 import logging
 import math
+import time
+import gc
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from itertools import islice
 
 # Configure basic logging
 logging.basicConfig(
@@ -17,6 +22,18 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
+
+# DB toggle: --db new (default) | --db old
+_db_parser = argparse.ArgumentParser(add_help=False)
+_db_parser.add_argument('--db', choices=['new', 'old'], default='new')
+_db_args, _ = _db_parser.parse_known_args()
+_DB_PREFIX = "NEW_" if _db_args.db == 'new' else ""
+
+# Performance config
+FETCH_BATCH_SIZE = 5000
+MAX_WORKERS      = min(32, (os.cpu_count() or 1) * 4)
+CHUNK_SIZE       = 500
+WRITE_BATCH_SIZE = 50000
 
 HEADERS = [
     "Property ID","CP ID","Property Name","QC ID","Asset Type","Sub Type",
@@ -109,95 +126,230 @@ def process_single_doc(item):
     # Sanitize Nones and NaNs
     return ["" if (isinstance(cell, float) and math.isnan(cell)) or cell is None else str(cell) for cell in row]
 
-def sync_firestore_to_sheets():
-    # 1. Initialize Firebase
+def process_single_doc_new(item):
+    """Processes a new-schema Properties document into a flat list of strings for Sheets.
+    Schema changes vs old:
+    - media: array of {cloudinaryUrl, firebaseUrl, type, url} maps (not {photos,videos,documents})
+    - pricing removed: totalAskPrice, pricePerSqft now top-level
+    - field renames: floorNo→floorNumber, noOfBedrooms→bedroom, buildingAge→ageOfBuilding,
+                     exclusive→isExclusive, bdaApproved→isBdaApproved,
+                     biappaApproved→isBiapaApproved, eKhata→hasEKhata,
+                     mapLocation→location, communityType→societyType,
+                     subType→apartmentSubType, currentStatus→dataStatus
+    - documents now top-level array
+    """
+    geoloc = item.get("_geoloc", {}) or {}
+    media_list = item.get("media", []) or []
+    if not isinstance(media_list, list):
+        media_list = []
+
+    photos = [m.get("url") or "" for m in media_list if isinstance(m, dict) and m.get("type") == "image"]
+    videos = [m.get("url") or "" for m in media_list if isinstance(m, dict) and m.get("type") == "video"]
+    docs_list = item.get("documents", []) or []
+    documents = [str(d) for d in docs_list if d] if isinstance(docs_list, list) else []
+
+    kam_name = item.get("kamName", "")
+    kam_id = item.get("kamId", "")
+    kam_info = f"{kam_name} ({kam_id})" if (kam_name or kam_id) else ""
+
+    row = [
+        item.get("propertyId", ""),            # Property ID
+        item.get("cpId", ""),                  # CP ID
+        item.get("propertyName", ""),          # Property Name
+        item.get("qcId", ""),                  # QC ID
+        item.get("assetType", ""),             # Asset Type
+        item.get("apartmentSubType", ""),      # Sub Type
+        item.get("plotArea", ""),              # Plot Size
+        item.get("carpet", ""),                # Carpet (Sq Ft)
+        item.get("sbua", ""),                  # SBUA (Sq ft)
+        item.get("facing", ""),                # Facing
+        format_price(item.get("totalAskPrice")),   # Total Ask Price (Lacs)
+        format_price(item.get("pricePerSqft")),    # Ask Price / Sqft
+        item.get("bedroom", ""),               # noOfBedrooms
+        item.get("micromarket", ""),           # Micromarket
+        item.get("societyType", ""),           # Community Type
+        item.get("extraDetails", ""),          # Extra Details
+        item.get("floorNumber", ""),           # Floor No.
+        item.get("possession", ""),            # Handover Date
+        item.get("zone", ""),                  # Zone
+        item.get("location", ""),              # Map Location
+        format_date(item.get("added")),        # Date of inventory added
+        format_date(item.get("dateOfLastChecked")),  # Date of status last checked
+        format_datetime(item.get("lastModified")),   # Last Check
+        item.get("driveLink", ""),             # Drive link for more info
+        item.get("buildingKhata", ""),         # Building Khata
+        item.get("landKhata", ""),             # Land Khata
+        item.get("ageOfBuilding", ""),         # Building Age
+        item.get("ageOfInventory", ""),        # Age of Inventory
+        item.get("ageOfStatus", ""),           # Age of Status
+        item.get("status", ""),                # Status
+        item.get("tenanted", ""),              # Tenanted or Not
+        str(item.get("ocReceived", "")),       # OC Received or not
+        str(item.get("isBdaApproved", "")),    # BDA Approved
+        str(item.get("isBiapaApproved", "")), # BIAPPA Approved
+        item.get("dataStatus", ""),            # Current Status
+        f"{geoloc.get('lat','')}, {geoloc.get('lng','')}" if geoloc else "",  # Coordinates
+        str(item.get("isExclusive", "")),      # Exclusive
+        item.get("referredFloorNumber", ""),   # Exact Floor
+        str(item.get("hasEKhata", "")),        # eKhata
+        ", ".join(photos),                     # Photos
+        ", ".join(videos),                     # Videos
+        ", ".join(documents),                  # Documents
+        item.get("source", ""),                # Source
+        item.get("listingType", ""),           # listingType
+        "",                                    # Sold Price (Lacs) — not in new schema
+        "",                                    # Sold Date — not in new schema
+        kam_info,                              # KAM Info
+    ]
+
+    return ["" if (isinstance(cell, float) and math.isnan(cell)) or cell is None else str(cell) for cell in row]
+
+
+def _init_firebase():
     creds_dict = {
         "type": "service_account",
-        "project_id": os.getenv("FIREBASE_PROJECT_ID"),
-        "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID"),
-        "private_key": os.getenv("FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n"),
-        "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
+        "project_id": os.getenv(f"{_DB_PREFIX}FIREBASE_PROJECT_ID"),
+        "private_key_id": os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY_ID"),
+        "private_key": os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n"),
+        "client_email": os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_EMAIL"),
         "token_uri": "https://oauth2.googleapis.com/token"
     }
     if not firebase_admin._apps:
         firebase_admin.initialize_app(credentials.Certificate(creds_dict))
-    
-    db = firestore.client()
-    
-    # 2. Batch Fetch Data from Firestore (Prevent Timeouts)
-    logger.info("Fetching documents from Firestore in batches...")
-    collection_ref = db.collection("acnTestProperties")
-    
-    processed_data = []
-    count = 0
-    batch_size = 1000
-    last_doc = None
-    
-    while True:
-        query = collection_ref.order_by("__name__").limit(batch_size)
-        if last_doc:
-            query = query.start_after(last_doc)
-            
-        docs = list(query.stream())
-        if not docs:
-            break
-            
-        for doc in docs:
-            processed_data.append(process_single_doc(doc.to_dict()))
-            count += 1
-        
-        last_doc = docs[-1]
-        logger.info(f"Processed {count} documents...")
-            
-    logger.info(f"Finished processing {count} documents.")
+    return firestore.client(database_id="default")
 
-    if not processed_data:
-        logger.info("No data found to sync.")
-        return
 
-    # 3. Initialize Sheets
-    sheets_creds_dict = {
+def _init_sheets():
+    sheets_creds = {
         "type": "service_account",
         "project_id": os.getenv("GSPREAD_PROJECT_ID"),
         "private_key": os.getenv("GSPREAD_PRIVATE_KEY", "").replace("\\n", "\n"),
         "client_email": os.getenv("GSPREAD_CLIENT_EMAIL"),
         "token_uri": "https://oauth2.googleapis.com/token"
     }
-    creds = Credentials.from_service_account_info(sheets_creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
-    
-    spreadsheet_id = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
-    sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Inventories from firebase")
-    
-    # 4. Write to Sheets in batches to avoid timeout
-    logger.info("Writing to Google Sheets...")
-    
-    # Clear the existing sheet completely
+    creds = Credentials.from_service_account_info(
+        sheets_creds, scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+    return build("sheets", "v4", credentials=creds, cache_discovery=False)
+
+
+def _parallel_fetch(db, collection_name: str) -> list:
+    """Stream all docs, convert to_dict in parallel."""
+    collection_ref = db.collection(collection_name)
+    logger.info(f"🚀 Streaming from: {collection_name} | workers: {MAX_WORKERS}")
+    t0 = time.time()
+    raw_docs = []
+    count = 0
+
+    doc_stream = collection_ref.stream()
+    while True:
+        batch = list(islice(doc_stream, FETCH_BATCH_SIZE))
+        if not batch:
+            break
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+            futures = {ex.submit(lambda d: d.to_dict(), doc): doc for doc in batch}
+            for f in as_completed(futures):
+                try:
+                    raw_docs.append(f.result())
+                    count += 1
+                    if count % 5000 == 0:
+                        logger.info(f"  📦 Fetched {count} docs ({count/(time.time()-t0):.0f}/s)")
+                except Exception as e:
+                    logger.error(f"Doc conversion error: {e}")
+        del batch
+
+    logger.info(f"✅ Fetched {count} docs in {time.time()-t0:.2f}s")
+    return raw_docs
+
+
+def _parallel_process(raw_docs: list) -> list:
+    """Process rows in parallel chunks."""
+    if not raw_docs:
+        return []
+    processor = process_single_doc_new if _db_args.db == 'new' else process_single_doc
+    chunks = [raw_docs[i:i + CHUNK_SIZE] for i in range(0, len(raw_docs), CHUNK_SIZE)]
+    logger.info(f"⚡ Processing {len(raw_docs)} docs in {len(chunks)} chunks | workers: {MAX_WORKERS}")
+    t0 = time.time()
+    rows = []
+
+    def process_chunk(chunk):
+        return [processor(item) for item in chunk if item]
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        futures = {ex.submit(process_chunk, c): i for i, c in enumerate(chunks)}
+        for f in as_completed(futures):
+            try:
+                rows.extend(f.result())
+            except Exception as e:
+                logger.error(f"Chunk error: {e}")
+
+    logger.info(f"✅ Processed {len(rows)} rows in {time.time()-t0:.2f}s")
+    return rows
+
+
+def _write_sheets(service, rows: list, spreadsheet_id: str, sheet_name: str):
+    """Write all rows via single batchUpdate call."""
+    all_rows = [HEADERS] + rows
+    total = len(all_rows)
+    quoted = f"'{sheet_name}'"
+    t0 = time.time()
+
+    logger.info(f"🧹 Clearing sheet...")
     service.spreadsheets().values().clear(
-        spreadsheetId=spreadsheet_id,
-        range=f"'{sheet_name}'!A:AW"  # AW accommodates the 47 columns
+        spreadsheetId=spreadsheet_id, range=f"{quoted}!A:AW", body={}
     ).execute()
-    
-    # Write in batches of 5000 rows
-    WRITE_BATCH_SIZE = 5000
-    all_rows = [HEADERS] + processed_data
-    total_rows = len(all_rows)
-    
-    for start in range(0, total_rows, WRITE_BATCH_SIZE):
-        batch = all_rows[start:start + WRITE_BATCH_SIZE]
-        start_row = start + 1  # Sheets rows are 1-indexed
-        range_str = f"'{sheet_name}'!A{start_row}"
-        
-        service.spreadsheets().values().update(
-            spreadsheetId=spreadsheet_id,
-            range=range_str,
-            valueInputOption="USER_ENTERED",
-            body={"values": batch}
-        ).execute()
-        
-        logger.info(f"  Written rows {start + 1} to {min(start + WRITE_BATCH_SIZE, total_rows)} of {total_rows}")
-    
-    logger.info("✅ Sync completed successfully!")
+
+    logger.info(f"📝 Writing {total} rows via batchUpdate...")
+    batch_data = []
+    for i in range(0, total, WRITE_BATCH_SIZE):
+        chunk = all_rows[i:i + WRITE_BATCH_SIZE]
+        start_row = i + 1
+        batch_data.append({
+            "range": f"{quoted}!A{start_row}:AW{start_row + len(chunk) - 1}",
+            "values": chunk,
+            "majorDimension": "ROWS"
+        })
+
+    service.spreadsheets().values().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"valueInputOption": "USER_ENTERED", "data": batch_data, "includeValuesInResponse": False}
+    ).execute()
+
+    logger.info(f"✅ Written {total} rows in {time.time()-t0:.2f}s")
+
+
+def sync_firestore_to_sheets():
+    start = time.time()
+    logger.info("="*60)
+    logger.info("⚡ ULTRA-FAST FIRESTORE TO SHEETS SYNC (Inventories)")
+    logger.info(f"🔧 {MAX_WORKERS} workers | fetch batch: {FETCH_BATCH_SIZE} | chunk: {CHUNK_SIZE}")
+    logger.info(f"🔑 DB: {'NEW' if _DB_PREFIX else 'OLD'} | Project: {os.getenv(f'{_DB_PREFIX}FIREBASE_PROJECT_ID')}")
+    logger.info("="*60)
+
+    collection_name = "Properties" if _db_args.db == 'new' else "acnTestProperties"
+    spreadsheet_id  = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
+    sheet_name      = os.getenv("GOOGLE_SHEET_NAME", "Inventories from firebase")
+
+    # Phase 1: fetch
+    logger.info("\n📥 PHASE 1: Fetching data")
+    db = _init_firebase()
+    raw_docs = _parallel_fetch(db, collection_name)
+    if not raw_docs:
+        logger.warning("No documents found.")
+        return
+
+    # Phase 2: process
+    logger.info("\n⚙️  PHASE 2: Processing data")
+    rows = _parallel_process(raw_docs)
+    del raw_docs
+    gc.collect()
+
+    # Phase 3: write
+    logger.info("\n📤 PHASE 3: Writing to Sheets")
+    service = _init_sheets()
+    _write_sheets(service, rows, spreadsheet_id, sheet_name)
+
+    logger.info(f"\n🎉 Total time: {time.time()-start:.2f}s | {len(rows)} records")
 
 if __name__ == "__main__":
     try:

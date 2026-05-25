@@ -1,3 +1,4 @@
+import argparse
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta
@@ -9,25 +10,31 @@ import json
 # Load environment variables
 load_dotenv()
 
+# DB toggle: --db new (default) | --db old
+_db_parser = argparse.ArgumentParser(add_help=False)
+_db_parser.add_argument('--db', choices=['new', 'old'], default='new')
+_db_args, _ = _db_parser.parse_known_args()
+_DB_PREFIX = "NEW_" if _db_args.db == 'new' else ""
+
 # Initialize Firebase Admin SDK using environment variables
 firebase_credentials = {
     "type": "service_account",
-    "project_id": os.getenv("FIREBASE_PROJECT_ID"),
-    "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID"),
-    "private_key": os.getenv("FIREBASE_PRIVATE_KEY").replace("\\n", "\n"),
-    "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
-    "client_id": os.getenv("FIREBASE_CLIENT_ID"),
+    "project_id": os.getenv(f"{_DB_PREFIX}FIREBASE_PROJECT_ID"),
+    "private_key_id": os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY_ID"),
+    "private_key": os.getenv(f"{_DB_PREFIX}FIREBASE_PRIVATE_KEY").replace("\\n", "\n"),
+    "client_email": os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_EMAIL"),
+    "client_id": os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_ID"),
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": os.getenv("FIREBASE_CLIENT_CERT_URL")
+    "client_x509_cert_url": os.getenv(f"{_DB_PREFIX}FIREBASE_CLIENT_CERT_URL")
 }
 
 cred = credentials.Certificate(firebase_credentials)
 firebase_admin.initialize_app(cred)
 
 # Get reference to Firestore database
-db = firestore.client()
+db = firestore.client(database_id="default")
 
 def standardize_phone_number(phone):
     # Remove any spaces or special characters

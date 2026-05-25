@@ -37,7 +37,7 @@ def initialize_firebase():
         }
         cred = credentials.Certificate(firebase_credentials)
         firebase_admin.initialize_app(cred)
-    return firestore.client()
+    return firestore.client(database_id="default")
 
 # Initialize Firebase and get database reference
 db = initialize_firebase()
