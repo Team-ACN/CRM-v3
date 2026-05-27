@@ -269,12 +269,24 @@ def process_documents(raw_docs):
         for item in chunk:
             if not item:
                 continue
-            pricing = safe_dict(item.get("pricing"))
-            geoloc = safe_dict(item.get("_geoloc"))
-            media = safe_dict(item.get("media"))
-            media_photos = media.get("photos", [])
-            media_videos = media.get("videos", [])
-            media_documents = media.get("documents", [])
+            pricing   = safe_dict(item.get("pricing"))
+            geoloc    = safe_dict(item.get("_geoloc"))
+            media_raw = item.get("media")
+            if isinstance(media_raw, list):
+                # New schema: array of {type, url} maps
+                photos_str    = ", ".join([m.get("url") or "" for m in media_raw if isinstance(m, dict) and m.get("type") == "image"])
+                videos_str    = ", ".join([m.get("url") or "" for m in media_raw if isinstance(m, dict) and m.get("type") == "video"])
+                docs_list     = item.get("documents", []) or []
+                documents_str = ", ".join([str(d) for d in docs_list if d]) if isinstance(docs_list, list) else ""
+            else:
+                # Old schema: map with photos/videos/documents arrays
+                media         = safe_dict(media_raw)
+                mp            = media.get("photos", [])
+                mv            = media.get("videos", [])
+                md            = media.get("documents", [])
+                photos_str    = ", ".join(mp) if isinstance(mp, list) else str(mp or "")
+                videos_str    = ", ".join(mv) if isinstance(mv, list) else str(mv or "")
+                documents_str = ", ".join(md) if isinstance(md, list) else str(md or "")
             row = [
                 item.get("propertyId", ""),
                 item.get("cpId", ""),
@@ -315,9 +327,9 @@ def process_documents(raw_docs):
                 item.get("exclusive", ""),
                 item.get("exactFloor", ""),
                 item.get("eKhata", ""),
-                ", ".join(media_photos) if isinstance(media_photos, list) else str(media_photos or ""),
-                ", ".join(media_videos) if isinstance(media_videos, list) else str(media_videos or ""),
-                ", ".join(media_documents) if isinstance(media_documents, list) else str(media_documents or ""),
+                photos_str,
+                videos_str,
+                documents_str,
                 item.get("source", ""),
                 item.get("builder_name", ""),
                 format_price(item.get("soldPrice", "")),
