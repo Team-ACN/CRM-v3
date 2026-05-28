@@ -586,6 +586,16 @@ def main():
             logger.warning("No data found")
             return 0
         
+        # Filter: only docs with added date after April 1, 2026
+        APRIL_1_TS = 1775001600  # 2026-04-01 00:00:00 UTC (seconds)
+        before_count = len(documents)
+        def _after_april1(doc_data: Dict) -> bool:
+            ts = doc_data.get("added", 0) or 0
+            ts_sec = ts / 1000 if ts > 4102444800 else ts
+            return ts_sec > APRIL_1_TS
+        documents = [(doc_id, doc_data) for doc_id, doc_data in documents if _after_april1(doc_data)]
+        logger.info(f"🔍 Filtered: {before_count} → {len(documents)} docs (after 2026-04-01)")
+
         # Phase 2: Parallel processing
         logger.info("\n⚙️ PHASE 2: Processing data")
         process_start = time.time()

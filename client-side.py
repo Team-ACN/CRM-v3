@@ -302,7 +302,7 @@ st.markdown("---")
 # Section 2 — Inventory
 # -----------------------------------------------------------------------------
 st.markdown('<p class="section-label">🏢 &nbsp;Inventory Management</p>', unsafe_allow_html=True)
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2, c3, c4 = st.columns(4)
 
 with c1:
     if st.button("📦 Inventories", use_container_width=True):
@@ -317,22 +317,16 @@ with c2:
     st.markdown('<p class="btn-caption">New format inventory sheet</p>', unsafe_allow_html=True)
 
 with c3:
-    if st.button("🆕 New Inventory 2", use_container_width=True):
-        with st.status("Syncing New Inventory 2…", expanded=True) as s:
+    if st.button("🆕 Product analysis", use_container_width=True):
+        with st.status("Syncing Product analysis…", expanded=True) as s:
             run_script("new-inventory-2.py", s, db=db_selection)
-    st.markdown('<p class="btn-caption">Alternate inventory sheet</p>', unsafe_allow_html=True)
+    st.markdown('<p class="btn-caption">Product analysis sheet</p>', unsafe_allow_html=True)
 
 with c4:
     if st.button("🔍 QC Properties", use_container_width=True):
         with st.status("Syncing QC Properties…", expanded=True) as s:
             run_script("QC.py", s, db=db_selection)
     st.markdown('<p class="btn-caption">QC-reviewed properties</p>', unsafe_allow_html=True)
-
-with c5:
-    if st.button("🆕 Product analysis", use_container_width=True):
-        with st.status("Syncing Product analysis…", expanded=True) as s:
-            run_script("new-inventory-2.py", s, db=db_selection)
-    st.markdown('<p class="btn-caption">Product analysis sheet</p>', unsafe_allow_html=True)
 
 st.markdown("---")
 
