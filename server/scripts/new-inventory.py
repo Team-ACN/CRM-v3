@@ -511,11 +511,12 @@ def build_row_new(item: dict):
 # ---------------------------
 # Fetch data from Firestore (batched pagination, same as inventories-from-firebase.py)
 # ---------------------------
-def fetch_firestore_data(collection_name):
-    """Paginated fetch with prefetch pipeline — hides network latency between pages."""
+def fetch_and_process(collection_name):
+    """Fetch + convert in one pass — never stores raw docs, minimises peak RAM."""
     db = firestore.client(database_id="default")
     collection_ref = db.collection(collection_name)
     PAGE_SIZE = 1000
+    row_builder = build_row_new if _db_args.db == 'new' else build_row
 
     def fetch_page(last_doc):
         q = collection_ref.order_by("__name__").limit(PAGE_SIZE)
@@ -523,9 +524,23 @@ def fetch_firestore_data(collection_name):
             q = q.start_after(last_doc)
         return list(q.stream())
 
-    logger.info(f"🚀 Fetching '{collection_name}' | page={PAGE_SIZE} | prefetch pipeline")
+    def to_row(doc):
+        item = doc.to_dict()
+        if not item:
+            return None
+        try:
+            row = row_builder(item)
+            return [
+                "" if (isinstance(cell, float) and math.isnan(cell)) or cell is None
+                else str(cell) for cell in row
+            ]
+        except Exception as e:
+            logger.error(f"Row build error: {e}")
+            return None
+
+    logger.info(f"🚀 Fetching+processing '{collection_name}' | page={PAGE_SIZE}")
     t0 = time.time()
-    raw_docs = []
+    rows = []
     count = 0
 
     with ThreadPoolExecutor(max_workers=2) as ex:
@@ -534,55 +549,18 @@ def fetch_firestore_data(collection_name):
             page = future.result()
             if not page:
                 break
-            # prefetch next page while processing this one
             future = ex.submit(fetch_page, page[-1]) if len(page) == PAGE_SIZE else None
             for doc in page:
-                raw_docs.append(doc.to_dict())
+                row = to_row(doc)
+                if row:
+                    rows.append(row)
                 count += 1
             if count % 5000 == 0:
                 logger.info(f"  📦 {count} docs ({count / (time.time() - t0):.0f}/s)")
             if future is None:
                 break
 
-    logger.info(f"✅ Fetched {count} docs in {time.time()-t0:.2f}s")
-    return raw_docs
-
-
-def process_documents(raw_docs):
-    """Process docs into rows in parallel chunks."""
-    if not raw_docs:
-        return []
-    row_builder = build_row_new if _db_args.db == 'new' else build_row
-
-    def process_chunk(chunk):
-        rows = []
-        for item in chunk:
-            if not item:
-                continue
-            try:
-                row = row_builder(item)
-                rows.append([
-                    "" if (isinstance(cell, float) and math.isnan(cell)) or cell is None
-                    else str(cell) for cell in row
-                ])
-            except Exception as e:
-                logger.error(f"Row build error: {e}")
-        return rows
-
-    chunks = [raw_docs[i:i + CHUNK_SIZE] for i in range(0, len(raw_docs), CHUNK_SIZE)]
-    logger.info(f"⚡ Processing {len(raw_docs)} docs in {len(chunks)} chunks | workers: {MAX_WORKERS}")
-    t0 = time.time()
-    rows = []
-
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-        futures = [ex.submit(process_chunk, c) for c in chunks]
-        for f in as_completed(futures):
-            try:
-                rows.extend(f.result())
-            except Exception as e:
-                logger.error(f"Chunk error: {e}")
-
-    logger.info(f"✅ Processed {len(rows)} rows in {time.time()-t0:.2f}s")
+    logger.info(f"✅ Fetched+processed {count} docs → {len(rows)} rows in {time.time()-t0:.2f}s")
     return rows
 
 
@@ -651,16 +629,11 @@ def main():
 
     initialize_firebase()
 
-    logger.info(f"\n📥 PHASE 1: Fetching data from '{FIRESTORE_COLLECTION_NAME}'")
-    raw_docs = fetch_firestore_data(FIRESTORE_COLLECTION_NAME)
-    if not raw_docs:
+    logger.info(f"\n📥 Fetching + processing '{FIRESTORE_COLLECTION_NAME}'")
+    rows = fetch_and_process(FIRESTORE_COLLECTION_NAME)
+    if not rows:
         logger.warning("No documents found.")
         return
-
-    logger.info(f"\n⚙️  PHASE 2: Processing {len(raw_docs)} documents")
-    rows = process_documents(raw_docs)
-    del raw_docs
-    gc.collect()
 
     logger.info(f"\n📤 PHASE 3: Writing to Sheets '{GOOGLE_SHEET_NAME}'")
     write_to_google_sheet(rows)
