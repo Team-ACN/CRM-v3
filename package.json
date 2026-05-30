@@ -1,24 +1,12 @@
 {
   "name": "crm-v3",
-  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "next": "15.3.3",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "dev": "concurrently --names \"api,web\" --prefix-colors \"cyan,green\" --kill-others-on-fail \"cd server && python3 -m uvicorn main:app --reload --port 8000\" \"cd client && npm run dev\"",
+    "build": "cd client && npm run build",
+    "install:client": "cd client && npm install"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "tailwindcss": "^4",
-    "@tailwindcss/postcss": "^4",
-    "typescript": "^5"
+    "concurrently": "^9.1.2"
   }
 }

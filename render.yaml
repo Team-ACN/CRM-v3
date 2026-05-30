@@ -1,16 +1,14 @@
 services:
   - type: web
-    name: crm-v3
-    env: docker
+    name: crm-v3-api
+    env: python
     plan: free
-    dockerfilePath: ./Dockerfile
+    rootDir: server
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PYTHON_BIN
-        value: python3
-      - key: NEXT_TELEMETRY_DISABLED
-        value: "1"
+      - key: PYTHON_VERSION
+        value: 3.11.0
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY_ID
@@ -41,4 +39,4 @@ services:
         sync: false
       - key: GSPREAD_CLIENT_ID
         sync: false
-    healthCheckPath: /
+    healthCheckPath: /health

@@ -20,7 +20,8 @@ export function useSyncScript(filename: string, db: DbMode) {
       onStart()
 
       const t0 = Date.now()
-      const url = `/api/run?script=${encodeURIComponent(filename)}&db=${db}`
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ''
+      const url = `${apiBase}/run?script=${encodeURIComponent(filename)}&db=${db}`
       const es = new EventSource(url)
       esRef.current = es
 
