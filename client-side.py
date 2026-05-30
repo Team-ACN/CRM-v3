@@ -8,6 +8,7 @@ import sys
 import gc
 import runpy
 import io
+import threading
 from contextlib import redirect_stdout, redirect_stderr
 from dotenv import load_dotenv
 
@@ -189,10 +190,14 @@ def run_script(script_name: str, status_container, db: str = "new"):
 
             def write(self, s):
                 super().write(s)
-                now = time.time()
-                if now - self.last_update > 0.5:
-                    log_placeholder.code(self.getvalue() or "...")
-                    self.last_update = now
+                if threading.current_thread() is threading.main_thread():
+                    now = time.time()
+                    if now - self.last_update > 0.5:
+                        log_placeholder.code(self.getvalue() or "...")
+                        self.last_update = now
+
+            def flush(self):
+                pass
 
         f_combined = LiveStream()
 
