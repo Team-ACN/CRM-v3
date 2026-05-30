@@ -512,41 +512,37 @@ def build_row_new(item: dict):
 # Fetch data from Firestore (batched pagination, same as inventories-from-firebase.py)
 # ---------------------------
 def fetch_firestore_data(collection_name):
-    """Fetch all docs via cursor-based pagination to avoid gRPC stream timeouts."""
+    """Paginated fetch with prefetch pipeline — hides network latency between pages."""
     db = firestore.client(database_id="default")
     collection_ref = db.collection(collection_name)
-    PAGE_SIZE = 500
-    logger.info(f"🚀 Paginating from: {collection_name} | page: {PAGE_SIZE} | workers: {MAX_WORKERS}")
+    PAGE_SIZE = 1000
+
+    def fetch_page(last_doc):
+        q = collection_ref.order_by("__name__").limit(PAGE_SIZE)
+        if last_doc is not None:
+            q = q.start_after(last_doc)
+        return list(q.stream())
+
+    logger.info(f"🚀 Fetching '{collection_name}' | page={PAGE_SIZE} | prefetch pipeline")
     t0 = time.time()
     raw_docs = []
     count = 0
-    last_doc = None
 
-    while True:
-        query = collection_ref.order_by("__name__").limit(PAGE_SIZE)
-        if last_doc is not None:
-            query = query.start_after(last_doc)
-
-        page = list(query.stream())
-        if not page:
-            break
-
-        last_doc = page[-1]
-
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-            futures = [ex.submit(lambda d: d.to_dict(), doc) for doc in page]
-            for f in as_completed(futures):
-                try:
-                    raw_docs.append(f.result())
-                    count += 1
-                except Exception as e:
-                    logger.error(f"Doc conversion error: {e}")
-
-        if count % 5000 == 0:
-            logger.info(f"  📦 Fetched {count} docs ({count/(time.time()-t0):.0f}/s)")
-
-        if len(page) < PAGE_SIZE:
-            break
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        future = ex.submit(fetch_page, None)
+        while True:
+            page = future.result()
+            if not page:
+                break
+            # prefetch next page while processing this one
+            future = ex.submit(fetch_page, page[-1]) if len(page) == PAGE_SIZE else None
+            for doc in page:
+                raw_docs.append(doc.to_dict())
+                count += 1
+            if count % 5000 == 0:
+                logger.info(f"  📦 {count} docs ({count / (time.time() - t0):.0f}/s)")
+            if future is None:
+                break
 
     logger.info(f"✅ Fetched {count} docs in {time.time()-t0:.2f}s")
     return raw_docs
