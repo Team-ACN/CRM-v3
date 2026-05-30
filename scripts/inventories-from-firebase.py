@@ -234,29 +234,40 @@ def _init_sheets():
 
 
 def _parallel_fetch(db, collection_name: str) -> list:
-    """Stream all docs, convert to_dict in parallel."""
+    """Fetch all docs via cursor-based pagination to avoid gRPC stream timeouts."""
     collection_ref = db.collection(collection_name)
-    logger.info(f"🚀 Streaming from: {collection_name} | workers: {MAX_WORKERS}")
+    PAGE_SIZE = 500
+    logger.info(f"🚀 Paginating from: {collection_name} | page: {PAGE_SIZE} | workers: {MAX_WORKERS}")
     t0 = time.time()
     raw_docs = []
     count = 0
+    last_doc = None
 
-    doc_stream = collection_ref.stream()
     while True:
-        batch = list(islice(doc_stream, FETCH_BATCH_SIZE))
-        if not batch:
+        query = collection_ref.order_by("__name__").limit(PAGE_SIZE)
+        if last_doc is not None:
+            query = query.start_after(last_doc)
+
+        page = list(query.stream())
+        if not page:
             break
+
+        last_doc = page[-1]
+
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-            futures = {ex.submit(lambda d: d.to_dict(), doc): doc for doc in batch}
+            futures = [ex.submit(lambda d: d.to_dict(), doc) for doc in page]
             for f in as_completed(futures):
                 try:
                     raw_docs.append(f.result())
                     count += 1
-                    if count % 5000 == 0:
-                        logger.info(f"  📦 Fetched {count} docs ({count/(time.time()-t0):.0f}/s)")
                 except Exception as e:
                     logger.error(f"Doc conversion error: {e}")
-        del batch
+
+        if count % 5000 == 0:
+            logger.info(f"  📦 Fetched {count} docs ({count/(time.time()-t0):.0f}/s)")
+
+        if len(page) < PAGE_SIZE:
+            break
 
     logger.info(f"✅ Fetched {count} docs in {time.time()-t0:.2f}s")
     return raw_docs
