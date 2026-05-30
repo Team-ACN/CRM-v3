@@ -233,10 +233,11 @@ def _init_sheets():
     return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
 
-def _parallel_fetch(db, collection_name: str) -> list:
-    """Paginated fetch with prefetch pipeline — hides network latency between pages."""
+def _fetch_and_process(db, collection_name: str) -> list:
+    """Fetch + convert in one pass — never stores raw docs, minimises peak RAM."""
     collection_ref = db.collection(collection_name)
     PAGE_SIZE = 1000
+    processor = process_single_doc_new if _db_args.db == 'new' else process_single_doc
 
     def fetch_page(last_doc):
         q = collection_ref.order_by("__name__").limit(PAGE_SIZE)
@@ -244,9 +245,9 @@ def _parallel_fetch(db, collection_name: str) -> list:
             q = q.start_after(last_doc)
         return list(q.stream())
 
-    logger.info(f"🚀 Fetching '{collection_name}' | page={PAGE_SIZE} | prefetch pipeline")
+    logger.info(f"🚀 Fetching+processing '{collection_name}' | page={PAGE_SIZE}")
     t0 = time.time()
-    raw_docs = []
+    rows = []
     count = 0
 
     with ThreadPoolExecutor(max_workers=2) as ex:
@@ -257,39 +258,16 @@ def _parallel_fetch(db, collection_name: str) -> list:
                 break
             future = ex.submit(fetch_page, page[-1]) if len(page) == PAGE_SIZE else None
             for doc in page:
-                raw_docs.append(doc.to_dict())
+                item = doc.to_dict()
+                if item:
+                    rows.append(processor(item))
                 count += 1
             if count % 5000 == 0:
                 logger.info(f"  📦 {count} docs ({count / (time.time() - t0):.0f}/s)")
             if future is None:
                 break
 
-    logger.info(f"✅ Fetched {count} docs in {time.time()-t0:.2f}s")
-    return raw_docs
-
-
-def _parallel_process(raw_docs: list) -> list:
-    """Process rows in parallel chunks."""
-    if not raw_docs:
-        return []
-    processor = process_single_doc_new if _db_args.db == 'new' else process_single_doc
-    chunks = [raw_docs[i:i + CHUNK_SIZE] for i in range(0, len(raw_docs), CHUNK_SIZE)]
-    logger.info(f"⚡ Processing {len(raw_docs)} docs in {len(chunks)} chunks | workers: {MAX_WORKERS}")
-    t0 = time.time()
-    rows = []
-
-    def process_chunk(chunk):
-        return [processor(item) for item in chunk if item]
-
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-        futures = {ex.submit(process_chunk, c): i for i, c in enumerate(chunks)}
-        for f in as_completed(futures):
-            try:
-                rows.extend(f.result())
-            except Exception as e:
-                logger.error(f"Chunk error: {e}")
-
-    logger.info(f"✅ Processed {len(rows)} rows in {time.time()-t0:.2f}s")
+    logger.info(f"✅ Fetched+processed {count} docs → {len(rows)} rows in {time.time()-t0:.2f}s")
     return rows
 
 
@@ -336,19 +314,12 @@ def sync_firestore_to_sheets():
     spreadsheet_id  = "1pkGrC3RQRxVwkEcb8AZyhT3KICKadw0IW9udkQsQh5k"
     sheet_name      = os.getenv("GOOGLE_SHEET_NAME", "Inventories from firebase")
 
-    # Phase 1: fetch
-    logger.info("\n📥 PHASE 1: Fetching data")
+    logger.info("\n📥 Fetching + processing data")
     db = _init_firebase()
-    raw_docs = _parallel_fetch(db, collection_name)
-    if not raw_docs:
+    rows = _fetch_and_process(db, collection_name)
+    if not rows:
         logger.warning("No documents found.")
         return
-
-    # Phase 2: process
-    logger.info("\n⚙️  PHASE 2: Processing data")
-    rows = _parallel_process(raw_docs)
-    del raw_docs
-    gc.collect()
 
     # Phase 3: write
     logger.info("\n📤 PHASE 3: Writing to Sheets")
