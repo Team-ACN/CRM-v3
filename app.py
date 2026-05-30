@@ -328,11 +328,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Environment Status Section
-st.markdown("""
-<div class="section-card">
-    <h3 class="section-title">🔧 Environment Status</h3>
-""", unsafe_allow_html=True)
-
 # Check environment variables and display status
 required_env_vars = [
     "FIREBASE_PROJECT_ID", "FIREBASE_PRIVATE_KEY_ID", "FIREBASE_PRIVATE_KEY",
@@ -341,20 +336,11 @@ required_env_vars = [
     "GSPREAD_CLIENT_EMAIL", "GSPREAD_CLIENT_ID"
 ]
 
-# System information
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown(f"<p><strong>Working Directory:</strong><br><code>{os.getcwd()}</code></p>", unsafe_allow_html=True)
-with col2:
-    st.markdown(f"<p><strong>Python Version:</strong><br><code>{sys.version.split()[0]}</code></p>", unsafe_allow_html=True)
-
-# Environment variables grid
-st.markdown('<div class="env-grid">', unsafe_allow_html=True)
+env_items_html = ""
 for var in required_env_vars:
     status_class = "success" if os.getenv(var) else "error"
     masked_value = "Configured" if os.getenv(var) else "Not Set"
-    
-    st.markdown(f"""
+    env_items_html += f"""
     <div class="env-item">
         <div class="env-status {status_class}"></div>
         <div>
@@ -362,10 +348,16 @@ for var in required_env_vars:
             <span style="color: #94a3b8; font-size: 12px;">{masked_value}</span>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
 
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+st.markdown(f"""
+<div class="section-card">
+    <h3 class="section-title">🔧 Environment Status</h3>
+    <p><strong>Working Directory:</strong><br><code>{os.getcwd()}</code></p>
+    <p><strong>Python Version:</strong><br><code>{sys.version.split()[0]}</code></p>
+    <div class="env-grid">{env_items_html}</div>
+</div>
+""", unsafe_allow_html=True)
 
 # Scripts list
 dict_scripts = {
@@ -380,30 +372,19 @@ dict_scripts = {
 }
 
 # Operations Section
-st.markdown("""
-<div class="section-card">
-    <h3 class="section-title">⚡ Available Operations</h3>
-""", unsafe_allow_html=True)
-
-# Create a grid layout for buttons
-button_cols = st.columns(2)
-for idx, (key, info) in enumerate(dict_scripts.items()):
-    with button_cols[idx % 2]:
-        if st.button(f"Execute {key}", key=f"btn_{key}", use_container_width=True):
-            st.session_state.output = run_script(info['file'])
-
-st.markdown("</div>", unsafe_allow_html=True)
+with st.container():
+    st.markdown('<div class="section-card"><h3 class="section-title">⚡ Available Operations</h3></div>', unsafe_allow_html=True)
+    button_cols = st.columns(2)
+    for idx, (key, info) in enumerate(dict_scripts.items()):
+        with button_cols[idx % 2]:
+            if st.button(f"Execute {key}", key=f"btn_{key}", use_container_width=True):
+                st.session_state.output = run_script(info['file'])
 
 # Output display
 if 'output' in st.session_state:
-    st.markdown("""
-    <div class="section-card">
-        <h3 class="section-title">📊 Operation Output</h3>
-    """, unsafe_allow_html=True)
-    
-    st.text_area("Script Output", st.session_state.output, height=300, key="output_area", label_visibility="collapsed")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="section-card"><h3 class="section-title">📊 Operation Output</h3></div>', unsafe_allow_html=True)
+        st.text_area("Script Output", st.session_state.output, height=300, key="output_area", label_visibility="collapsed")
 
 # Professional Footer
 st.markdown("""
