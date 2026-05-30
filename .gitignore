@@ -1,5 +1,9 @@
 credentials/
 .venv
+node_modules/
+.next/
+.env.local
+*.log
 acn-resale-inventories-dde03-firebase-adminsdk-ikyw4-1d40de00d3.json
 enquiry-tracking-1818988a416c.json
 .env
