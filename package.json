@@ -2,7 +2,7 @@
   "name": "crm-v3",
   "private": true,
   "scripts": {
-    "dev": "concurrently --names \"api,web\" --prefix-colors \"cyan,green\" --kill-others-on-fail \"cd server && python3 -m uvicorn main:app --reload --port 8000\" \"cd client && npm run dev\"",
+    "dev": "concurrently --names \"api,web\" --prefix-colors \"cyan,green\" --kill-others-on-fail \"cd server && ../.venv/bin/python -m uvicorn main:app --reload --port 8000\" \"cd client && npm run dev\"",
     "build": "cd client && npm run build",
     "install:client": "cd client && npm install"
   },

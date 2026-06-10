@@ -198,7 +198,7 @@ def initialize_firebase() -> firestore.Client:
             logger.info("✅ Firebase initialized")
         
         if _firebase_db is None:
-            _firebase_db = firestore.client(database_id="default")
+            _firebase_db = firestore.client()
         
         return _firebase_db
 

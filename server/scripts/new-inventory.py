@@ -513,7 +513,7 @@ def build_row_new(item: dict):
 # ---------------------------
 def fetch_and_process(collection_name):
     """Fetch + convert in one pass — never stores raw docs, minimises peak RAM."""
-    db = firestore.client(database_id="default")
+    db = firestore.client()
     collection_ref = db.collection(collection_name)
     PAGE_SIZE = 1000
     row_builder = build_row_new if _db_args.db == 'new' else build_row

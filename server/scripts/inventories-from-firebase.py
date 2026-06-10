@@ -97,7 +97,9 @@ def process_single_doc(item):
     """Processes a single dictionary into a flat list of strings for Sheets."""
     pricing = item.get("pricing", {}) or {}
     media = item.get("media", {}) or {}
-    geoloc = item.get("_geoloc", {}) or {}
+    geoloc = item.get("_geoloc")
+    if not isinstance(geoloc, dict):
+        geoloc = {}
     
     row = [
         item.get("propertyId", ""), item.get("cpId", ""), item.get("propertyName", ""),
@@ -138,7 +140,9 @@ def process_single_doc_new(item):
                      subType→apartmentSubType, currentStatus→dataStatus
     - documents now top-level array
     """
-    geoloc = item.get("_geoloc", {}) or {}
+    geoloc = item.get("_geoloc")
+    if not isinstance(geoloc, dict):
+        geoloc = {}
     media_list = item.get("media", []) or []
     if not isinstance(media_list, list):
         media_list = []
@@ -216,7 +220,7 @@ def _init_firebase():
     }
     if not firebase_admin._apps:
         firebase_admin.initialize_app(credentials.Certificate(creds_dict))
-    return firestore.client(database_id="default")
+    return firestore.client()
 
 
 def _init_sheets():

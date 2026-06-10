@@ -228,7 +228,7 @@ def safe_dict(value):
 # ---------------------------
 def fetch_firestore_data(collection_name):
     """Fetch all docs via stream, convert to_dict in parallel."""
-    db = firestore.client(database_id="default")
+    db = firestore.client()
     collection_ref = db.collection(collection_name)
     print(f"🚀 Streaming from: {collection_name} | workers: {MAX_WORKERS}")
     t0 = time.time()
