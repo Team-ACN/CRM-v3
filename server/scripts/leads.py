@@ -106,10 +106,14 @@ def convert_unix_to_date(unix_timestamp):
     try:
         if not unix_timestamp or not isinstance(unix_timestamp, (int, float, str)):
             return ""
+        ts = int(unix_timestamp)
         # Handle 0 timestamps
-        if int(unix_timestamp) == 0:
+        if ts == 0:
             return ""
-        return datetime.fromtimestamp(int(unix_timestamp), tz=timezone.utc).strftime('%d/%b/%Y')
+        # Firestore stores some timestamps in milliseconds (JS epoch); normalize to seconds
+        if abs(ts) > 9999999999:
+            ts //= 1000
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%d/%b/%Y')
     except Exception as e:
         logger.warning(f"⚠️ Error converting timestamp {unix_timestamp}: {e}")
         return ""

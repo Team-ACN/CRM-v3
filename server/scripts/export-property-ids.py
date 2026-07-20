@@ -20,7 +20,8 @@ parser.add_argument('--output', default='', help='Output CSV path (default: auto
 args = parser.parse_args()
 
 _DB_PREFIX = "NEW_" if args.db == 'new' else ""
-COLLECTION  = "Properties" if args.db == 'new' else "acnTestProperties"
+# COLLECTION  = "Properties" if args.db == 'new' else "acnTestProperties"
+COLLECTION  = "acnQCInventoriesTest" if args.db == 'new' else "acnQCInventoriesTest"
 PAGE_SIZE   = 1000
 
 ROOT_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -38,7 +39,7 @@ def _init_firebase():
     }
     if not firebase_admin._apps:
         firebase_admin.initialize_app(credentials.Certificate(creds_dict))
-    return firestore.client(database_id="default")
+    return firestore.client()
 
 
 def fetch_rows(db) -> list[dict]:
@@ -59,14 +60,33 @@ def fetch_rows(db) -> list[dict]:
 
         for doc in page:
             item = doc.to_dict() or {}
+
+            # _geoloc is an array [lat, lng]  e.g. [13.031399, 77.6101328]
+            geoloc = item.get("_geoloc")
+            if isinstance(geoloc, (list, tuple)) and len(geoloc) >= 2:
+                lat, lng = geoloc[0], geoloc[1]
+            elif isinstance(geoloc, dict):
+                lat = geoloc.get("lat", "")
+                lng = geoloc.get("lng", "")
+            elif geoloc is not None and hasattr(geoloc, "latitude"):
+                # Firestore GeoPoint fallback
+                lat = geoloc.latitude
+                lng = geoloc.longitude
+            else:
+                lat, lng = "", ""
+
             rows.append({
                 "propertyId":    item.get("propertyId", ""),
                 "propertyName":  item.get("propertyName", ""),
                 "projectId":     item.get("projectId", ""),
                 "listingType":   item.get("listingType", ""),
+                "micromarket":   item.get("micromarket", ""),
                 "societyType":   item.get("societyType", ""),
+                "assetType":     item.get("assetType", ""),
                 "status":        item.get("status", ""),
                 "kamName":       item.get("kamName", ""),
+                "latitude":      lat,
+                "longitude":     lng,
             })
             count += 1
 
@@ -83,7 +103,7 @@ def fetch_rows(db) -> list[dict]:
 
 def write_csv(rows: list[dict], path: str):
     with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["propertyId", "propertyName", "projectId", "listingType", "societyType", "status", "kamName"])
+        writer = csv.DictWriter(f, fieldnames=["propertyId", "propertyName", "projectId", "listingType", "micromarket", "societyType", "assetType", "status", "kamName", "latitude", "longitude"])
         writer.writeheader()
         writer.writerows(rows)
     logger.info(f"Wrote {len(rows)} rows → {path}")
