@@ -10,6 +10,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
+from google_auth_httplib2 import AuthorizedHttp
+import httplib2
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import sys, codecs
@@ -582,7 +584,8 @@ def write_to_google_sheet(data):
         creds = Credentials.from_service_account_info(
             sheets_creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
-        service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+        authed_http = AuthorizedHttp(creds, http=httplib2.Http(timeout=300))
+        service = build("sheets", "v4", http=authed_http, cache_discovery=False)
 
         num_cols = len(UNIFIED_HEADERS)
         end_col = column_index_to_letter(num_cols)
@@ -597,7 +600,7 @@ def write_to_google_sheet(data):
             spreadsheetId=GOOGLE_SHEET_ID,
             range=sheet_a1_range(GOOGLE_SHEET_NAME, f"A:{end_col}"),
             body={}
-        ).execute()
+        ).execute(num_retries=3)
 
         logger.info(f"📝 Writing {total} rows via batchUpdate...")
         batch_data = []
@@ -613,7 +616,7 @@ def write_to_google_sheet(data):
         service.spreadsheets().values().batchUpdate(
             spreadsheetId=GOOGLE_SHEET_ID,
             body={"valueInputOption": "USER_ENTERED", "data": batch_data, "includeValuesInResponse": False}
-        ).execute()
+        ).execute(num_retries=3)
 
         logger.info(f"✅ Written {total} rows in {time.time()-t0:.2f}s")
     except Exception as e:
